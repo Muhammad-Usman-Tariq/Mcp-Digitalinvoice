@@ -1,0 +1,170 @@
+"""Async HTTP client adapter for talking to Digital Invoicing Software API."""
+
+import re
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, Optional
+import httpx
+from mcp_digitalinvoice.config import settings
+from mcp_digitalinvoice.adapter.exceptions import (
+    UpstreamContractError,
+    AuthenticationError,
+    UpstreamServerError,
+    AdapterError,
+)
+from mcp_digitalinvoice.logging import logger
+
+
+class DigitalInvoicingAdapter:
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        http_client: Optional[httpx.AsyncClient] = None,
+    ):
+        self.base_url = (base_url or settings.digital_invoicing_base_url).rstrip("/")
+        self._client = http_client
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Browser-like headers for same-origin compliance."""
+        return {
+            "Origin": self.base_url,
+            "Referer": f"{self.base_url}/",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            ),
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/plain, */*",
+        }
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        headers: Optional[Dict[str, str]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> httpx.Response:
+        """Helper to send HTTP requests using an httpx client."""
+        url = f"{self.base_url}{path}"
+        req_headers = self._get_headers()
+        if headers:
+            req_headers.update(headers)
+
+        timeout = httpx.Timeout(settings.http_timeout_seconds)
+
+        if self._client is not None:
+            return await self._client.request(
+                method, url, headers=req_headers, json=json_body, timeout=timeout
+            )
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            return await client.request(
+                method, url, headers=req_headers, json=json_body
+            )
+
+    async def login(self, email: str, password: str) -> Dict[str, Any]:
+        """Perform authenticating POST /api/auth/login and capture cookie + dynamic expiry."""
+        try:
+            response = await self._request(
+                "POST",
+                "/api/auth/login",
+                json_body={"email": email, "password": password},
+            )
+        except httpx.TimeoutException as exc:
+            logger.warning("Third-party login timeout", error=str(exc))
+            raise UpstreamServerError("Timeout connecting to Digital Invoicing Software.") from exc
+        except httpx.RequestError as exc:
+            logger.warning("Third-party login network error", error=str(exc))
+            raise AdapterError("Network failure communicating with third-party service.") from exc
+
+        if response.status_code in (400, 401, 403):
+            raise AuthenticationError("Invalid login credentials provided for Digital Invoicing Software.")
+        elif response.status_code >= 500:
+            raise UpstreamServerError(f"Digital Invoicing Software returned server error {response.status_code}.")
+        elif response.status_code != 200 and response.status_code != 201:
+            raise AdapterError(f"Unexpected HTTP status {response.status_code} during login.")
+
+        # Capture Set-Cookie header
+        set_cookie_header = response.headers.get("set-cookie") or response.headers.get("Set-Cookie") or ""
+        cookie_val = ""
+        max_age_seconds = 7199  # Default fallback if unspecified
+
+        if "fbr_session=" in set_cookie_header:
+            match = re.search(r"fbr_session=([^;]+)", set_cookie_header)
+            if match:
+                cookie_val = match.group(1)
+
+        # Parse Max-Age dynamically from header
+        max_age_match = re.search(r"Max-Age=(\d+)", set_cookie_header, re.IGNORECASE)
+        if max_age_match:
+            max_age_seconds = int(max_age_match.group(1))
+
+        if not cookie_val:
+            # Fallback if raw header string was given or simple cookie
+            cookie_val = set_cookie_header.split(";")[0] if set_cookie_header else "dummy_session"
+
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=max_age_seconds)
+
+        try:
+            body = response.json()
+        except Exception:
+            body = {}
+
+        user_profile = body.get("user", {})
+        company_profile = {}
+        if isinstance(user_profile, dict):
+            if "company" in user_profile and isinstance(user_profile["company"], dict):
+                company_profile = user_profile["company"]
+            elif "companies" in user_profile:
+                comps = user_profile["companies"]
+                if isinstance(comps, dict):
+                    company_profile = comps.get("company", comps)
+            if not company_profile:
+                company_profile = user_profile
+
+        return {
+            "cookie": cookie_val,
+            "expires_at": expires_at,
+            "max_age": max_age_seconds,
+            "profile": company_profile,
+            "raw_body": body,
+        }
+
+    async def create_or_update_invoice(self, cookie: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """POST /api/invoices to create a draft invoice."""
+        headers = {"Cookie": f"fbr_session={cookie}" if not cookie.startswith("fbr_session=") else cookie}
+
+        try:
+            response = await self._request(
+                "POST", "/api/invoices", headers=headers, json_body=payload
+            )
+        except httpx.TimeoutException as exc:
+            logger.warning("Invoice POST timeout", error=str(exc))
+            raise UpstreamServerError("Timeout creating invoice on Digital Invoicing Software.") from exc
+        except httpx.RequestError as exc:
+            logger.warning("Invoice POST network error", error=str(exc))
+            raise AdapterError("Network failure during invoice save.") from exc
+
+        if response.status_code in (401, 403):
+            raise AuthenticationError("Session expired or unauthorized for Digital Invoicing Software.")
+        elif response.status_code >= 500:
+            raise UpstreamServerError(f"Digital Invoicing Software returned {response.status_code} error.")
+        elif response.status_code not in (200, 201):
+            raise AdapterError(f"Unexpected status code {response.status_code} during invoice creation.")
+
+        try:
+            data = response.json()
+        except Exception as exc:
+            raise UpstreamContractError("Response body is not valid JSON.") from exc
+
+        if not isinstance(data, dict) or "id" not in data:
+            raise UpstreamContractError("Response missing mandatory 'id' field in invoice object.")
+
+        return data
+
+    async def validate_invoice(self, cookie: str, invoice_id: str) -> Dict[str, Any]:
+        """Stub for validate_invoice - out of scope for current build."""
+        raise NotImplementedError("Validate Invoice is out of scope due to upstream 500 error.")
+
+    async def submit_invoice(self, cookie: str, invoice_id: str) -> Dict[str, Any]:
+        """Stub for submit_invoice - out of scope for current build."""
+        raise NotImplementedError("Submit Invoice is out of scope for current build.")

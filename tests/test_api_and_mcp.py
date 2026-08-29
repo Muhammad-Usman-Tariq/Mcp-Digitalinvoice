@@ -35,7 +35,16 @@ async def test_rest_api_connect_and_fill(
     respx.post(f"{base_url}/api/auth/login").respond(
         status_code=200,
         headers={"Set-Cookie": "fbr_session=api_test_cookie; Max-Age=7199"},
-        json={"user": {"company": {"business_name": synthetic_tenant_data["name"]}}},
+        json={
+            "user": {
+                "company": {
+                    "business_name": synthetic_tenant_data["name"],
+                    "ntninc": synthetic_tenant_data["ntn"],
+                    "province": synthetic_tenant_data["province"],
+                    "address": synthetic_tenant_data["address"],
+                }
+            }
+        },
     )
     respx.post(f"{base_url}/api/invoices").respond(
         status_code=201, json={"id": remote_id, "status": "draft"}

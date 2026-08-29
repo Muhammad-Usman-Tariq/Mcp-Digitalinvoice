@@ -1,9 +1,13 @@
 """Pytest configuration and fixtures using Faker for synthetic test data generation."""
 
-import asyncio
 import os
-import uuid
 from typing import AsyncGenerator
+from cryptography.fernet import Fernet
+
+# Set dynamic runtime Fernet key for pytest execution if not present in env
+if "ENCRYPTION_KEY" not in os.environ:
+    os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode()
+
 import pytest
 import pytest_asyncio
 from faker import Faker

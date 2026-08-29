@@ -70,6 +70,7 @@ class TenantSession(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
     )
     encrypted_cookie: Mapped[str] = mapped_column(Text, nullable=False)
+    seller_profile: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

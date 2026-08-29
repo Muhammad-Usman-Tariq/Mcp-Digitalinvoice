@@ -38,6 +38,7 @@ def upgrade() -> None:
         'tenant_sessions',
         sa.Column('tenant_id', sa.UUID(), nullable=False),
         sa.Column('encrypted_cookie', sa.Text(), nullable=False),
+        sa.Column('seller_profile', sa.JSON(), nullable=True),
         sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('last_refreshed_at', sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ondelete='CASCADE'),

@@ -26,6 +26,11 @@ class RateLimitError(AdapterError):
     pass
 
 
+class MissingSellerProfileError(AdapterError):
+    """Raised when required seller profile data is missing from session/login context."""
+    pass
+
+
 class ConnectionBrokenError(AdapterError):
     """Raised when tenant stored credentials fail to authenticate repeatedly."""
     pass

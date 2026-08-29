@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from typing import Dict, Any
 from mcp_digitalinvoice.models.schemas import FillInvoiceInput, BuyerInfo, InvoiceMeta
+from mcp_digitalinvoice.adapter.exceptions import MissingSellerProfileError
 
 
 def map_fbr_schema_to_internal_payload(
@@ -13,29 +14,44 @@ def map_fbr_schema_to_internal_payload(
     meta = input_data.meta or InvoiceMeta()
     items = input_data.items or []
 
+    if not seller_profile or not isinstance(seller_profile, dict):
+        raise MissingSellerProfileError("Seller profile data is missing or invalid.")
+
     # Seller identity is ALWAYS sourced from tenant live login profile, never hardcoded
     seller_name = (
         seller_profile.get("business_name")
         or seller_profile.get("seller_business_name")
         or seller_profile.get("company_name")
-        or ""
+        or seller_profile.get("name")
     )
     seller_ntn = (
         seller_profile.get("ntninc")
         or seller_profile.get("seller_ntninc")
         or seller_profile.get("ntn")
-        or ""
     )
     seller_province = (
         seller_profile.get("province")
         or seller_profile.get("seller_province")
-        or ""
+        or seller_profile.get("state")
     )
     seller_address = (
         seller_profile.get("address")
         or seller_profile.get("seller_address")
-        or ""
     )
+
+    if not seller_name or not seller_ntn or not seller_province or not seller_address:
+        missing = []
+        if not seller_name:
+            missing.append("business_name")
+        if not seller_ntn:
+            missing.append("ntninc")
+        if not seller_province:
+            missing.append("province")
+        if not seller_address:
+            missing.append("address")
+        raise MissingSellerProfileError(
+            f"Could not resolve seller company profile for this tenant — missing fields: {', '.join(missing)}."
+        )
 
     current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 

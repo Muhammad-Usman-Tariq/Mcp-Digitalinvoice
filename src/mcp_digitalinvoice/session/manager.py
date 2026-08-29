@@ -46,17 +46,19 @@ class SessionManager:
         # 1. Check Redis cache if available
         if self.redis:
             cache_key = f"fbr_session:tenant:{tenant_id}"
-            cached_val = await self.redis.get(cache_key)
-            if cached_val:
-                try:
+            try:
+                cached_val = await self.redis.get(cache_key)
+                if cached_val:
                     data = json.loads(cached_val)
                     expires_str = data.get("expires_at")
                     if expires_str:
                         expires_at = datetime.fromisoformat(expires_str)
+                        if expires_at.tzinfo is None:
+                            expires_at = expires_at.replace(tzinfo=timezone.utc)
                         if expires_at > now + timedelta(seconds=buffer_seconds):
                             return data["cookie"], data.get("profile", {})
-                except Exception:
-                    pass
+            except Exception as exc:
+                logger.warning("Redis read error in session manager", error=str(exc))
 
         # 2. Check Postgres tenant_sessions
         stmt = select(TenantSession).where(TenantSession.tenant_id == tenant_id)
@@ -69,6 +71,7 @@ class SessionManager:
 
         if db_session and db_expires and db_expires > now + timedelta(seconds=buffer_seconds):
             decrypted_cookie = decrypt_secret(db_session.encrypted_cookie)
+            cached_profile = db_session.seller_profile or {}
 
             # Re-populate Redis cache if available
             if self.redis:
@@ -77,20 +80,28 @@ class SessionManager:
                     cache_payload = {
                         "cookie": decrypted_cookie,
                         "expires_at": db_expires.isoformat(),
-                        "profile": {},
+                        "profile": cached_profile,
                     }
-                    await self.redis.setex(
-                        f"fbr_session:tenant:{tenant_id}", ttl, json.dumps(cache_payload)
-                    )
+                    try:
+                        await self.redis.setex(
+                            f"fbr_session:tenant:{tenant_id}", ttl, json.dumps(cache_payload)
+                        )
+                    except Exception:
+                        pass
 
-            return decrypted_cookie, {}
+            return decrypted_cookie, cached_profile
 
         # 3. Cache missing or expired -> perform fresh login with rate-limit check
         if self.redis:
             rate_key = f"login_limit:tenant:{tenant_id}"
-            if await self.redis.get(rate_key):
-                logger.warning("Login rate limit triggered", tenant_id=str(tenant_id))
-                raise RateLimitError("Login rate limit exceeded. Please wait 30 seconds before retrying.")
+            try:
+                if await self.redis.get(rate_key):
+                    logger.warning("Login rate limit triggered", tenant_id=str(tenant_id))
+                    raise RateLimitError("Login rate limit exceeded. Please wait 30 seconds before retrying.")
+            except RateLimitError:
+                raise
+            except Exception:
+                pass
 
         # Fetch stored credentials
         cred_stmt = select(TenantCredential).where(TenantCredential.tenant_id == tenant_id)
@@ -107,9 +118,12 @@ class SessionManager:
 
         # Set rate limit flag in Redis (1 attempt per 30 seconds)
         if self.redis:
-            await self.redis.setex(
-                f"login_limit:tenant:{tenant_id}", settings.login_rate_limit_seconds, "1"
-            )
+            try:
+                await self.redis.setex(
+                    f"login_limit:tenant:{tenant_id}", settings.login_rate_limit_seconds, "1"
+                )
+            except Exception:
+                pass
 
         try:
             login_result = await self.adapter.login(email, password)
@@ -128,12 +142,14 @@ class SessionManager:
         # Upsert tenant_sessions row in Postgres
         if db_session:
             db_session.encrypted_cookie = encrypted_cookie
+            db_session.seller_profile = profile
             db_session.expires_at = expires_at
             db_session.last_refreshed_at = now
         else:
             new_session = TenantSession(
                 tenant_id=tenant_id,
                 encrypted_cookie=encrypted_cookie,
+                seller_profile=profile,
                 expires_at=expires_at,
                 last_refreshed_at=now,
             )
@@ -150,16 +166,22 @@ class SessionManager:
                     "expires_at": expires_at.isoformat(),
                     "profile": profile,
                 }
-                await self.redis.setex(
-                    f"fbr_session:tenant:{tenant_id}", ttl, json.dumps(cache_payload)
-                )
+                try:
+                    await self.redis.setex(
+                        f"fbr_session:tenant:{tenant_id}", ttl, json.dumps(cache_payload)
+                    )
+                except Exception:
+                    pass
 
         return cookie, profile
 
     async def invalidate_cookie(self, tenant_id: uuid.UUID) -> None:
         """Purge cached cookie for reactive refresh when 401 occurs."""
         if self.redis:
-            await self.redis.delete(f"fbr_session:tenant:{tenant_id}")
+            try:
+                await self.redis.delete(f"fbr_session:tenant:{tenant_id}")
+            except Exception:
+                pass
 
         stmt = select(TenantSession).where(TenantSession.tenant_id == tenant_id)
         res = await self.db.execute(stmt)

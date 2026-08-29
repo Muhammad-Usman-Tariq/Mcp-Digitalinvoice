@@ -1,5 +1,6 @@
 """Tests for mapper module translating camelCase FBR extraction to snake_case payload."""
 
+import pytest
 from mcp_digitalinvoice.models.schemas import (
     FillInvoiceInput,
     BuyerInfo,
@@ -41,3 +42,22 @@ def test_mapper_conversion(synthetic_tenant_data, synthetic_buyer_data, syntheti
     assert det["hscode"] == synthetic_item_data["hsCode"]
     assert det["quantity"] == float(synthetic_item_data["quantity"])
     assert det["sale_type"] == synthetic_item_data["saleType"]
+
+
+def test_mapper_missing_seller_profile_raises():
+    from mcp_digitalinvoice.adapter.exceptions import MissingSellerProfileError
+
+    input_data = FillInvoiceInput(
+        buyer=BuyerInfo(businessName="Buyer Co", province="State", registrationType="Reg"),
+        items=[InvoiceItem(hsCode="1234.56", quantity=1, saleType="Goods")],
+    )
+
+    # Empty seller profile
+    with pytest.raises(MissingSellerProfileError) as exc_info:
+        map_fbr_schema_to_internal_payload(input_data, {})
+    assert "seller company profile" in str(exc_info.value).lower() or "missing" in str(exc_info.value).lower()
+
+    # Incomplete seller profile (missing address & ntn)
+    with pytest.raises(MissingSellerProfileError):
+        map_fbr_schema_to_internal_payload(input_data, {"business_name": "Seller Inc", "province": "State"})
+

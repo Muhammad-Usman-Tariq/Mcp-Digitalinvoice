@@ -162,7 +162,16 @@ async def test_edge_case_5_upstream_5xx_retries(
     respx.post(f"{base_url}/api/auth/login").respond(
         status_code=200,
         headers={"Set-Cookie": "fbr_session=cookie500; Max-Age=7199"},
-        json={"user": {}},
+        json={
+            "user": {
+                "company": {
+                    "business_name": synthetic_tenant_data["name"],
+                    "ntninc": synthetic_tenant_data["ntn"],
+                    "province": synthetic_tenant_data["province"],
+                    "address": synthetic_tenant_data["address"],
+                }
+            }
+        },
     )
     inv_route = respx.post(f"{base_url}/api/invoices").respond(status_code=500)
 
@@ -213,7 +222,16 @@ async def test_edge_case_7_idempotency_duplicate_submission(
     respx.post(f"{base_url}/api/auth/login").respond(
         status_code=200,
         headers={"Set-Cookie": "fbr_session=idemp_cookie; Max-Age=7199"},
-        json={"user": {}},
+        json={
+            "user": {
+                "company": {
+                    "business_name": synthetic_tenant_data["name"],
+                    "ntninc": synthetic_tenant_data["ntn"],
+                    "province": synthetic_tenant_data["province"],
+                    "address": synthetic_tenant_data["address"],
+                }
+            }
+        },
     )
     inv_route = respx.post(f"{base_url}/api/invoices").respond(
         status_code=201, json={"id": remote_id, "status": "draft"}
@@ -291,7 +309,16 @@ async def test_edge_case_9_upstream_contract_error(
     respx.post(f"{base_url}/api/auth/login").respond(
         status_code=200,
         headers={"Set-Cookie": "fbr_session=cookie; Max-Age=7199"},
-        json={"user": {}},
+        json={
+            "user": {
+                "company": {
+                    "business_name": synthetic_tenant_data["name"],
+                    "ntninc": synthetic_tenant_data["ntn"],
+                    "province": synthetic_tenant_data["province"],
+                    "address": synthetic_tenant_data["address"],
+                }
+            }
+        },
     )
     # Missing 'id' field in response
     respx.post(f"{base_url}/api/invoices").respond(
@@ -325,7 +352,16 @@ async def test_edge_case_10_dynamic_max_age_parsing(synthetic_tenant_data):
     respx.post(f"{base_url}/api/auth/login").respond(
         status_code=200,
         headers={"Set-Cookie": "fbr_session=dynamic_cookie; Max-Age=3600; Path=/"},
-        json={"user": {}},
+        json={
+            "user": {
+                "company": {
+                    "business_name": synthetic_tenant_data["name"],
+                    "ntninc": synthetic_tenant_data["ntn"],
+                    "province": synthetic_tenant_data["province"],
+                    "address": synthetic_tenant_data["address"],
+                }
+            }
+        },
     )
 
     adapter = DigitalInvoicingAdapter(base_url=base_url)
@@ -388,7 +424,16 @@ async def test_edge_case_13_network_timeout(
     respx.post(f"{base_url}/api/auth/login").respond(
         status_code=200,
         headers={"Set-Cookie": "fbr_session=timeout_cookie; Max-Age=7199"},
-        json={"user": {}},
+        json={
+            "user": {
+                "company": {
+                    "business_name": synthetic_tenant_data["name"],
+                    "ntninc": synthetic_tenant_data["ntn"],
+                    "province": synthetic_tenant_data["province"],
+                    "address": synthetic_tenant_data["address"],
+                }
+            }
+        },
     )
     respx.post(f"{base_url}/api/invoices").mock(side_effect=httpx.TimeoutException("Network timeout"))
 

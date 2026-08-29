@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/mcp_invoice"
     redis_url: str = "redis://localhost:6379/0"
 
-    # Security
-    encryption_key: str = "k5_3sZ8XfD-t4K3qR8W1yU9vX2zL7nB4mQ6pP0oI8aE="
+    # Security (Must be set via ENCRYPTION_KEY environment variable - no default fallback)
+    encryption_key: str
 
     # Target Third-Party Service
     digital_invoicing_base_url: str = "https://www.digitalinvoicingsoftware.com"

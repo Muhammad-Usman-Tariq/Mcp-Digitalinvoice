@@ -38,6 +38,7 @@ from mcp_digitalinvoice.adapter.exceptions import (
     UpstreamServerError,
     AdapterError,
     ConnectionBrokenError,
+    MissingSellerProfileError,
 )
 from mcp_digitalinvoice.logging import logger
 
@@ -226,7 +227,18 @@ class InvoiceService:
                     summary="Tenant connection broken. Re-authentication required via connect_account.",
                 )
 
-            internal_payload = map_fbr_schema_to_internal_payload(input_data, seller_profile)
+            try:
+                internal_payload = map_fbr_schema_to_internal_payload(input_data, seller_profile)
+            except MissingSellerProfileError as exc:
+                job.status = "failed"
+                job.error_detail = str(exc)
+                job.completed_at = utc_now()
+                await self.db.commit()
+                return FillInvoiceResult(
+                    status="failed",
+                    error=str(exc),
+                    summary="Could not resolve seller company profile for this tenant — session data may be incomplete, try again.",
+                )
 
             # Step 6: Call Adapter with retries and reactive refresh
             max_attempts = settings.max_retries + 1

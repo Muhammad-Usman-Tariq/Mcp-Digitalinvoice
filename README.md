@@ -59,6 +59,11 @@ pip install -r requirements.txt
 .\.venv\Scripts\python -m mcp_digitalinvoice.mcp_server.server
 ```
 
+## Security
+
+> [!CAUTION]
+> **Encryption Key Management**: The `ENCRYPTION_KEY` environment variable must be set to a secure 32-byte base64-encoded Fernet key. Application startup will fail immediately if `ENCRYPTION_KEY` is not provided. If an encryption key was ever used to encrypt real tenant data and is suspected of exposure, that data must be re-encrypted under a freshly generated key, since the old key must be considered compromised.
+
 ## Workflows
 
 ### Tenant Onboarding (`connect_account`)

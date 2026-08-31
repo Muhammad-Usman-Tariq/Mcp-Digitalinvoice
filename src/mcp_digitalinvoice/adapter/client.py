@@ -177,16 +177,26 @@ class DigitalInvoicingAdapter:
 
             invoice_status = (data.get("status") or "").strip().lower()
             if invoice_status not in ("draft", ""):
+                # Surface whatever reason/message/error fields the site included,
+                # instead of discarding the body and guessing blindly.
+                reason_keys = (
+                    "message", "reason", "error", "errors", "errorMessage",
+                    "validationErrors", "detail", "details",
+                )
+                site_reason = {k: data[k] for k in reason_keys if k in data}
                 logger.warning(
                     "Invoice created with unexpected status",
                     attempt=attempt + 1,
                     status=invoice_status,
+                    raw_response_body=data,
+                    site_reason=site_reason or None,
                 )
                 if attempt < max_transport_retries:
                     continue
+                reason_str = f" Site response detail: {site_reason}" if site_reason else f" Full response body: {data}"
                 raise UpstreamContractError(
                     f"Invoice was created but landed in unexpected status "
-                    f"'{invoice_status}' after {max_transport_retries + 1} attempts."
+                    f"'{invoice_status}' after {max_transport_retries + 1} attempts.{reason_str}"
                 )
 
             return data

@@ -5,11 +5,18 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 import httpx
 from mcp_digitalinvoice.config import settings
+from mcp_digitalinvoice.adapter.reference_data import (
+    SALE_TYPE_TO_TRANS_TYPE_ID,
+    PROVINCE_TO_SUPPLIER_ID,
+)
 from mcp_digitalinvoice.adapter.exceptions import (
     UpstreamContractError,
     AuthenticationError,
     UpstreamServerError,
     AdapterError,
+    UnknownSaleTypeError,
+    UnknownProvinceError,
+    AmbiguousRateError,
 )
 from mcp_digitalinvoice.logging import logger
 
@@ -160,6 +167,82 @@ class DigitalInvoicingAdapter:
             raise UpstreamContractError("Response missing mandatory 'id' field in invoice object.")
 
         return data
+
+    def _format_date_for_rate_lookup(self, invoice_date: Optional[str]) -> str:
+        """Format ISO date ('2026-08-31') to target site format ('31-August-2026')."""
+        if not invoice_date:
+            dt = datetime.now(timezone.utc)
+        else:
+            try:
+                dt = datetime.strptime(invoice_date, "%Y-%m-%d")
+            except ValueError:
+                try:
+                    dt = datetime.fromisoformat(invoice_date)
+                except ValueError:
+                    return invoice_date
+        return f"{dt.day}-{dt.strftime('%B')}-{dt.year}"
+
+    async def fetch_sales_tax_rate(
+        self, cookie: str, sale_type: str, seller_province: str, invoice_date: Optional[str] = None
+    ) -> float:
+        """Fetch sales tax rate options from live SaleTypeToRate endpoint."""
+        trans_type_id = SALE_TYPE_TO_TRANS_TYPE_ID.get(sale_type)
+        if trans_type_id is None:
+            raise UnknownSaleTypeError(
+                f"No known transTypeId mapping for sale type '{sale_type}'. "
+                f"Add it to reference_data.py by inspecting the site's own "
+                f"SaleTypeToRate call when this sale type is selected."
+            )
+
+        supplier_id = PROVINCE_TO_SUPPLIER_ID.get(seller_province)
+        if supplier_id is None:
+            raise UnknownProvinceError(
+                f"No known originationSupplier mapping for province '{seller_province}'."
+            )
+
+        date_str = self._format_date_for_rate_lookup(invoice_date)
+        path = (
+            f"/api/fbr/pdi/v2/SaleTypeToRate"
+            f"?date={date_str}&transTypeId={trans_type_id}&originationSupplier={supplier_id}"
+        )
+        headers = {"Cookie": f"fbr_session={cookie}" if not cookie.startswith("fbr_session=") else cookie}
+
+        try:
+            response = await self._request("GET", path, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise UpstreamServerError("Timeout fetching tax rate options from Digital Invoicing Software.") from exc
+        except httpx.RequestError as exc:
+            raise AdapterError("Network failure during tax rate lookup.") from exc
+
+        if response.status_code in (401, 403):
+            raise AuthenticationError("Session expired or unauthorized for Digital Invoicing Software.")
+        elif response.status_code >= 500:
+            raise UpstreamServerError(f"Digital Invoicing Software returned {response.status_code} on rate lookup.")
+        elif response.status_code != 200:
+            raise AdapterError(f"Unexpected status code {response.status_code} during tax rate lookup.")
+
+        try:
+            options = response.json()
+        except Exception as exc:
+            raise UpstreamContractError("Rate lookup response body is not valid JSON.") from exc
+
+        if not isinstance(options, list) or not options:
+            raise UnknownSaleTypeError(
+                f"SaleTypeToRate returned no rate options for sale type '{sale_type}'."
+            )
+
+        if len(options) > 1:
+            rate_list = ", ".join(f"{o.get('ratE_VALUE')}%" for o in options if "ratE_VALUE" in o)
+            raise AmbiguousRateError(
+                f"Multiple valid tax rates for '{sale_type}': {rate_list}. "
+                f"Caller must specify which one via the item's 'rate' field."
+            )
+
+        first_val = options[0].get("ratE_VALUE")
+        if first_val is None:
+            raise UpstreamContractError("Rate option missing 'ratE_VALUE' key.")
+
+        return float(first_val)
 
     async def validate_invoice(self, cookie: str, invoice_id: str) -> Dict[str, Any]:
         """Stub for validate_invoice - out of scope for current build."""

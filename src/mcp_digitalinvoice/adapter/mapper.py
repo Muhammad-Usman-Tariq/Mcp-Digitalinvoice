@@ -25,7 +25,8 @@ def map_fbr_schema_to_internal_payload(
         or seller_profile.get("name")
     )
     seller_ntn = (
-        seller_profile.get("ntninc")
+        seller_profile.get("ntn_cnic")
+        or seller_profile.get("ntninc")
         or seller_profile.get("seller_ntninc")
         or seller_profile.get("ntn")
     )

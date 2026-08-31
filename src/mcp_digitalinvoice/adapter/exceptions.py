@@ -26,6 +26,21 @@ class RateLimitError(AdapterError):
     pass
 
 
+class UnknownSaleTypeError(AdapterError):
+    """Raised when sale type mapping is missing from reference data."""
+    pass
+
+
+class UnknownProvinceError(AdapterError):
+    """Raised when province mapping is missing from reference data."""
+    pass
+
+
+class AmbiguousRateError(AdapterError):
+    """Raised when multiple valid tax rates exist for a sale type and province."""
+    pass
+
+
 class MissingSellerProfileError(AdapterError):
     """Raised when required seller profile data is missing from session/login context."""
     pass

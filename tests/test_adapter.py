@@ -82,3 +82,53 @@ async def test_adapter_out_of_scope_stubs():
         await adapter.validate_invoice("cookie", "inv_123")
     with pytest.raises(NotImplementedError):
         await adapter.submit_invoice("cookie", "inv_123")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_sales_tax_rate_success():
+    base_url = "https://www.digitalinvoicingsoftware.com"
+    respx.get(url__startswith=f"{base_url}/api/fbr/pdi/v2/SaleTypeToRate").respond(
+        status_code=200,
+        json=[{"ratE_ID": 728, "ratE_DESC": "18%", "ratE_VALUE": 18}],
+    )
+
+    adapter = DigitalInvoicingAdapter(base_url=base_url)
+    rate = await adapter.fetch_sales_tax_rate("cookie", "Goods at standard rate (default)", "Punjab", "2026-08-31")
+    assert rate == 18.0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_sales_tax_rate_ambiguous():
+    from mcp_digitalinvoice.adapter.exceptions import AmbiguousRateError
+
+    base_url = "https://www.digitalinvoicingsoftware.com"
+    respx.get(url__startswith=f"{base_url}/api/fbr/pdi/v2/SaleTypeToRate").respond(
+        status_code=200,
+        json=[{"ratE_VALUE": 5.0}, {"ratE_VALUE": 7.5}],
+    )
+
+    adapter = DigitalInvoicingAdapter(base_url=base_url)
+    with pytest.raises(AmbiguousRateError) as exc_info:
+        await adapter.fetch_sales_tax_rate("cookie", "Electricity Supply to Retailers", "Punjab", "2026-08-31")
+    assert "Multiple valid tax rates" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_fetch_sales_tax_rate_unmapped_sale_type():
+    from mcp_digitalinvoice.adapter.exceptions import UnknownSaleTypeError
+
+    adapter = DigitalInvoicingAdapter()
+    with pytest.raises(UnknownSaleTypeError):
+        await adapter.fetch_sales_tax_rate("cookie", "Some Unmapped Sale Type", "Punjab", "2026-08-31")
+
+
+@pytest.mark.asyncio
+async def test_fetch_sales_tax_rate_unmapped_province():
+    from mcp_digitalinvoice.adapter.exceptions import UnknownProvinceError
+
+    adapter = DigitalInvoicingAdapter()
+    with pytest.raises(UnknownProvinceError):
+        await adapter.fetch_sales_tax_rate("cookie", "Goods at standard rate (default)", "Sindh", "2026-08-31")
+

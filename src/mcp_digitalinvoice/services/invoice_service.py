@@ -39,6 +39,9 @@ from mcp_digitalinvoice.adapter.exceptions import (
     AdapterError,
     ConnectionBrokenError,
     MissingSellerProfileError,
+    AmbiguousRateError,
+    UnknownSaleTypeError,
+    UnknownProvinceError,
 )
 from mcp_digitalinvoice.logging import logger
 
@@ -226,6 +229,38 @@ class InvoiceService:
                     error=str(exc),
                     summary="Tenant connection broken. Re-authentication required via connect_account.",
                 )
+
+            # Auto-fetch tax rates for items missing explicit rate
+            seller_prov = seller_profile.get("province") or seller_profile.get("seller_province") or ""
+            inv_date = input_data.meta.invoiceDate if input_data.meta else None
+
+            for idx, item in enumerate(input_data.items or []):
+                if item.rate is None or item.rate == "":
+                    try:
+                        fetched_rate = await self.adapter.fetch_sales_tax_rate(
+                            cookie, item.saleType, seller_prov, inv_date
+                        )
+                        item.rate = fetched_rate
+                    except AmbiguousRateError as exc:
+                        job.status = "needs_info"
+                        job.error_detail = str(exc)
+                        job.completed_at = utc_now()
+                        await self.db.commit()
+                        return FillInvoiceResult(
+                            status="needs_info",
+                            missing_fields=[f"items[{idx}].rate"],
+                            summary=str(exc),
+                        )
+                    except (UnknownSaleTypeError, UnknownProvinceError) as exc:
+                        job.status = "failed"
+                        job.error_detail = str(exc)
+                        job.completed_at = utc_now()
+                        await self.db.commit()
+                        return FillInvoiceResult(
+                            status="failed",
+                            summary="Could not determine tax rate automatically.",
+                            error=str(exc),
+                        )
 
             try:
                 internal_payload = map_fbr_schema_to_internal_payload(input_data, seller_profile)

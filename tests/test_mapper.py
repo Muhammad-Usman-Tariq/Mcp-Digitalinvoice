@@ -64,6 +64,9 @@ def test_mapper_real_world_calculations(synthetic_tenant_data, synthetic_buyer_d
 
     assert payload["invoice"]["company_id"] == 101
     assert payload["invoice"]["user_id"] == 501
+    assert payload["invoice"]["status"] == "draft"
+    assert payload["invoice"]["total_amount"] == 2301.0  # sum of line totals
+    assert payload["invoice"]["buyer_province"] == payload["invoice"]["buyer_province"].upper()
     assert det["product_description"] == "Widget"
     assert det["rate"] == 18.0
     assert det["fixed_invoice_value_on_retail_price"] == 78.0

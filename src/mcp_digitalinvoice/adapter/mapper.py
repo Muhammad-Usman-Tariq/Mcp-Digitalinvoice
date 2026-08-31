@@ -97,7 +97,7 @@ def map_fbr_schema_to_internal_payload(
         "seller_address": seller_address,
         "buyer_ntninc": buyer.ntnCnic or "",
         "buyer_business_name": buyer.businessName or "",
-        "buyer_province": buyer.province or "",
+        "buyer_province": (buyer.province or "").strip().upper(),
         "buyer_address": buyer.address or "",
         "buyer_registration_type": buyer.registrationType or "",
         "buyer_strn": buyer.strn or "",
@@ -142,5 +142,12 @@ def map_fbr_schema_to_internal_payload(
                 "sr_no_schedule_no": "",
             }
         )
+
+    # Confirmed via live DevTools capture of the site's own UI-generated request:
+    # the invoice header carries an explicit "status": "draft" and a "total_amount"
+    # equal to the sum of the line items' total_value. Both were previously absent
+    # from our payload entirely.
+    invoice_data["status"] = "draft"
+    invoice_data["total_amount"] = round(sum(d["total_value"] for d in details_data), 2)
 
     return {"invoice": invoice_data, "details": details_data}

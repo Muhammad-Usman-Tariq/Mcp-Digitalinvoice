@@ -11,12 +11,13 @@
       "description": "Test agricultural machinery item",
       "quantity": 10,
       "saleType": "Goods at standard rate (default)",
-      "uom": "PCS",
+      "uom": "Numbers, pieces, units",
       "fixedValue": 100
     }
   ],
   "meta": {
-    "invoiceRefNo": "TEST-DUMMY-005",
-    "invoiceDate": "2026-08-31"
+    "invoiceRefNo": "TEST-DUMMY-006",
+    "invoiceDate": "2026-08-31",
+    "scenarioId": "SN001"
   }
 }

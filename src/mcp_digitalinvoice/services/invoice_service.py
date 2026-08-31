@@ -274,6 +274,20 @@ class InvoiceService:
                             summary="Could not determine tax rate automatically.",
                             error=str(exc),
                         )
+                    except AdapterError as exc:
+                        # Covers UpstreamServerError (timeouts/5xx), AuthenticationError,
+                        # UpstreamContractError, etc. from the rate-lookup call. Without this,
+                        # these exceptions were uncaught here and crashed the ASGI app with a
+                        # raw 500 instead of a clean JSON "failed" result.
+                        job.status = "failed"
+                        job.error_detail = str(exc)
+                        job.completed_at = utc_now()
+                        await self.db.commit()
+                        return FillInvoiceResult(
+                            status="failed",
+                            summary="Failed to fetch tax rate from Digital Invoicing Software (upstream/network issue). Please retry.",
+                            error=str(exc),
+                        )
 
             try:
                 internal_payload = map_fbr_schema_to_internal_payload(input_data, seller_profile)

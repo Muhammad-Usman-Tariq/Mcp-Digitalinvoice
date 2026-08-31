@@ -1,0 +1,23 @@
+{
+  "buyer": {
+    "businessName": "Fresh Test Buyer",
+    "ntnCnic": "1234567-8",
+    "province": "Punjab",
+    "address": "123 Test Street, Lahore, Punjab",
+    "registrationType": "Registered"
+  },
+  "items": [
+    {
+      "hsCode": "8432.1010",
+      "description": "Test agricultural machinery item",
+      "quantity": 10,
+      "saleType": "Goods at standard rate (default)",
+      "uom": "PCS",
+      "fixedValue": 100
+    }
+  ],
+  "meta": {
+    "invoiceRefNo": "TEST-DUMMY-003",
+    "invoiceDate": "2026-08-31"
+  }
+}

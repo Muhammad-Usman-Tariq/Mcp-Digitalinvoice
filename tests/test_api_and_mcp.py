@@ -37,6 +37,8 @@ async def test_rest_api_connect_and_fill(
         headers={"Set-Cookie": "fbr_session=api_test_cookie; Max-Age=7199"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],

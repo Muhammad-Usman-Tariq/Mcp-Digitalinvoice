@@ -1,10 +1,9 @@
 {
   "buyer": {
     "businessName": "Fresh Test Buyer",
-    "ntnCnic": "1234567-8",
     "province": "Punjab",
     "address": "123 Test Street, Lahore, Punjab",
-    "registrationType": "Registered"
+    "registrationType": "Unregistered"
   },
   "items": [
     {
@@ -17,7 +16,7 @@
     }
   ],
   "meta": {
-    "invoiceRefNo": "TEST-DUMMY-003",
+    "invoiceRefNo": "TEST-DUMMY-005",
     "invoiceDate": "2026-08-31"
   }
 }

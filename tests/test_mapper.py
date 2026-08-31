@@ -37,6 +37,8 @@ def test_mapper_real_world_calculations(synthetic_tenant_data, synthetic_buyer_d
         "ntninc": synthetic_tenant_data["ntn"],
         "province": synthetic_tenant_data["province"],
         "address": synthetic_tenant_data["address"],
+        "company_id": 101,
+        "user_id": 501,
     }
 
     # Verified real-world numbers: qty=25, fixedValue=78, rate="18%"
@@ -60,12 +62,33 @@ def test_mapper_real_world_calculations(synthetic_tenant_data, synthetic_buyer_d
     assert len(payload["details"]) == 1
     det = payload["details"][0]
 
+    assert payload["invoice"]["company_id"] == 101
+    assert payload["invoice"]["user_id"] == 501
     assert det["product_description"] == "Widget"
     assert det["rate"] == 18.0
     assert det["fixed_invoice_value_on_retail_price"] == 78.0
     assert det["value_sales_excluding_st"] == 1950.0  # 25 * 78
     assert det["sales_tax_applicable"] == 351.0       # 1950 * 0.18
     assert det["total_value"] == 2301.0               # 1950 + 351
+
+
+def test_mapper_missing_company_id_or_user_id_raises(synthetic_tenant_data):
+    input_data = FillInvoiceInput(
+        buyer=BuyerInfo(businessName="Buyer Co", province="State", registrationType="Unregistered"),
+        items=[InvoiceItem(hsCode="1234.56", quantity=1, fixedValue=100, saleType="Goods")],
+    )
+
+    with pytest.raises(MissingSellerProfileError) as exc_info:
+        map_fbr_schema_to_internal_payload(input_data, {
+            "business_name": synthetic_tenant_data["name"],
+            "ntninc": synthetic_tenant_data["ntn"],
+            "province": "Punjab",
+            "address": synthetic_tenant_data["address"],
+        })
+    err_str = str(exc_info.value)
+    assert "company_id" in err_str
+    assert "user_id" in err_str
+
 
 
 def test_mapper_missing_seller_profile_raises():

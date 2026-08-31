@@ -118,7 +118,11 @@ class DigitalInvoicingAdapter:
 
         user_profile = body.get("user", {})
         company_profile = {}
+        top_level_user_id = None
+        top_level_company_id = None
         if isinstance(user_profile, dict):
+            top_level_user_id = user_profile.get("id")
+            top_level_company_id = user_profile.get("company_id")
             if "company" in user_profile and isinstance(user_profile["company"], dict):
                 company_profile = user_profile["company"]
             elif "companies" in user_profile:
@@ -127,6 +131,17 @@ class DigitalInvoicingAdapter:
                     company_profile = comps.get("company", comps)
             if not company_profile:
                 company_profile = user_profile
+
+        # The site's own invoice-create payload requires the acting user_id and
+        # company_id (confirmed via live DevTools capture of the UI's own request) —
+        # these live at the top level of `user`, not inside `companies`, and were
+        # previously being silently discarded here.
+        if isinstance(company_profile, dict):
+            company_profile = dict(company_profile)
+            if top_level_company_id and "company_id" not in company_profile:
+                company_profile["company_id"] = top_level_company_id
+            if top_level_user_id and "user_id" not in company_profile:
+                company_profile["user_id"] = top_level_user_id
 
         return {
             "cookie": cookie_val,

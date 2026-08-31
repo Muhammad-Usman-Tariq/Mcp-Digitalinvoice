@@ -65,8 +65,10 @@ def map_fbr_schema_to_internal_payload(
         seller_profile.get("address")
         or seller_profile.get("seller_address")
     )
+    company_id = seller_profile.get("company_id")
+    user_id = seller_profile.get("user_id")
 
-    if not seller_name or not seller_ntn or not seller_province or not seller_address:
+    if not seller_name or not seller_ntn or not seller_province or not seller_address or not company_id or not user_id:
         missing = []
         if not seller_name:
             missing.append("business_name")
@@ -76,6 +78,10 @@ def map_fbr_schema_to_internal_payload(
             missing.append("province")
         if not seller_address:
             missing.append("address")
+        if not company_id:
+            missing.append("company_id")
+        if not user_id:
+            missing.append("user_id")
         raise MissingSellerProfileError(
             f"Could not resolve seller company profile for this tenant — missing fields: {', '.join(missing)}."
         )
@@ -83,6 +89,8 @@ def map_fbr_schema_to_internal_payload(
     current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     invoice_data = {
+        "company_id": company_id,
+        "user_id": user_id,
         "seller_business_name": seller_name,
         "seller_ntninc": seller_ntn,
         "seller_province": seller_province,
@@ -92,6 +100,7 @@ def map_fbr_schema_to_internal_payload(
         "buyer_province": buyer.province or "",
         "buyer_address": buyer.address or "",
         "buyer_registration_type": buyer.registrationType or "",
+        "buyer_strn": buyer.strn or "",
         "invoice_type": "Sale Invoice",
         "invoice_date": meta.invoiceDate or current_date,
         "invoice_ref_no": meta.invoiceRefNo or "",

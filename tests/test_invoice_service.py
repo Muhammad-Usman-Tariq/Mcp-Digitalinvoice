@@ -113,6 +113,8 @@ async def test_fill_invoice_auto_fetch_rate_when_omitted(
         headers={"Set-Cookie": "fbr_session=rate_test_cookie; Max-Age=7199"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],
@@ -166,6 +168,8 @@ async def test_fill_invoice_explicit_rate_bypasses_lookup(
         headers={"Set-Cookie": "fbr_session=rate_test_cookie; Max-Age=7199"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],

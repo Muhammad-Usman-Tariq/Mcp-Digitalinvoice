@@ -36,7 +36,7 @@ async def test_edge_case_1_cold_start_login(db_session, fake_redis, synthetic_te
     login_route = respx.post(f"{base_url}/api/auth/login").respond(
         status_code=200,
         headers={"Set-Cookie": f"fbr_session={fake_cookie}; Path=/; Max-Age=7199"},
-        json={"user": {"company": {"business_name": synthetic_tenant_data["name"]}}},
+        json={"user": {"id": 101, "company_id": 202, "company": {"business_name": synthetic_tenant_data["name"]}}},
     )
 
     tenant = Tenant(name=synthetic_tenant_data["name"])
@@ -164,6 +164,8 @@ async def test_edge_case_5_upstream_5xx_retries(
         headers={"Set-Cookie": "fbr_session=cookie500; Max-Age=7199"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],
@@ -224,6 +226,8 @@ async def test_edge_case_7_idempotency_duplicate_submission(
         headers={"Set-Cookie": "fbr_session=idemp_cookie; Max-Age=7199"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],
@@ -311,6 +315,8 @@ async def test_edge_case_9_upstream_contract_error(
         headers={"Set-Cookie": "fbr_session=cookie; Max-Age=7199"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],
@@ -354,6 +360,8 @@ async def test_edge_case_10_dynamic_max_age_parsing(synthetic_tenant_data):
         headers={"Set-Cookie": "fbr_session=dynamic_cookie; Max-Age=3600; Path=/"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],
@@ -426,6 +434,8 @@ async def test_edge_case_13_network_timeout(
         headers={"Set-Cookie": "fbr_session=timeout_cookie; Max-Age=7199"},
         json={
             "user": {
+                "id": 101,
+                "company_id": 202,
                 "company": {
                     "business_name": synthetic_tenant_data["name"],
                     "ntninc": synthetic_tenant_data["ntn"],

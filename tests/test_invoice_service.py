@@ -205,3 +205,50 @@ async def test_fill_invoice_explicit_rate_bypasses_lookup(
     assert res.status == "saved"
     assert not rate_route.called  # Tax rate lookup was NOT called!
 
+
+@pytest.mark.asyncio
+async def test_fill_invoice_idempotency_multiple_historical_jobs(
+    db_session, fake_redis, synthetic_buyer_data, synthetic_item_data
+):
+    """Regression test: multiple invoice_jobs rows for same document hash should not raise MultipleResultsFound."""
+    from mcp_digitalinvoice.models.db import InvoiceJob
+    from mcp_digitalinvoice.services.invoice_service import utc_now
+    import datetime
+
+    tenant_id = uuid.uuid4()
+    doc_hash = "test_doc_hash_12345"
+
+    # Job 1: Older failed attempt
+    job1 = InvoiceJob(
+        tenant_id=tenant_id,
+        source_document_hash=doc_hash,
+        extracted_payload="{}",
+        status="failed",
+        error_detail="Network error",
+        created_at=utc_now() - datetime.timedelta(minutes=10),
+    )
+    # Job 2: Later successful retry
+    job2 = InvoiceJob(
+        tenant_id=tenant_id,
+        source_document_hash=doc_hash,
+        extracted_payload="{}",
+        status="saved",
+        remote_invoice_id="inv_remote_999",
+        created_at=utc_now() - datetime.timedelta(minutes=5),
+    )
+    db_session.add_all([job1, job2])
+    await db_session.commit()
+
+    service = InvoiceService(db=db_session, redis=fake_redis)
+    inp = FillInvoiceInput(
+        buyer=BuyerInfo(**synthetic_buyer_data),
+        items=[InvoiceItem(**synthetic_item_data)],
+        sourceDocumentHash=doc_hash,
+    )
+
+    # Calling fill_invoice with same document hash should return job2's result without MultipleResultsFound exception
+    res = await service.fill_invoice(tenant_id, inp)
+    assert res.status == "saved"
+    assert res.remote_invoice_id == "inv_remote_999"
+
+

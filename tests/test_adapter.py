@@ -130,5 +130,27 @@ async def test_fetch_sales_tax_rate_unmapped_province():
 
     adapter = DigitalInvoicingAdapter()
     with pytest.raises(UnknownProvinceError):
-        await adapter.fetch_sales_tax_rate("cookie", "Goods at standard rate (default)", "Sindh", "2026-08-31")
+        await adapter.fetch_sales_tax_rate("cookie", "Goods at standard rate (default)", "Invalid Province", "2026-08-31")
+
+
+def test_reference_data_normalization_and_lookups():
+    from mcp_digitalinvoice.adapter.reference_data import (
+        normalize_lookup_key,
+        lookup_province_code,
+        lookup_trans_type_id,
+    )
+
+    assert normalize_lookup_key(" punjab ") == "PUNJAB"
+    assert normalize_lookup_key("Goods  at   Standard rate (default) ") == "GOODS AT STANDARD RATE (DEFAULT)"
+
+    assert lookup_province_code("Punjab") == 7
+    assert lookup_province_code(" PUNJAB ") == 7
+    assert lookup_province_code("BALOCHISTAN") == 2
+    assert lookup_province_code("Unknown") is None
+
+    assert lookup_trans_type_id("Goods at standard rate (default)") == 75
+    assert lookup_trans_type_id(" GOODS AT STANDARD RATE (DEFAULT) ") == 75
+    assert lookup_trans_type_id("ELECTRICITY SUPPLY TO RETAILERS") == 62
+    assert lookup_trans_type_id("Nonexistent Sale Type") is None
+
 

@@ -184,13 +184,15 @@ class InvoiceService:
             payload_str = json.dumps(input_data.model_dump(), sort_keys=True)
             doc_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
-        # Check existing invoice jobs for idempotency
-        stmt = select(InvoiceJob).where(
-            InvoiceJob.tenant_id == tenant_id,
-            InvoiceJob.source_document_hash == doc_hash,
+        existing_job_res = await self.db.execute(
+            select(InvoiceJob)
+            .where(
+                InvoiceJob.tenant_id == tenant_id,
+                InvoiceJob.source_document_hash == doc_hash,
+            )
+            .order_by(InvoiceJob.created_at.desc())
         )
-        existing_job_res = await self.db.execute(stmt)
-        existing_job = existing_job_res.scalar_one_or_none()
+        existing_job = existing_job_res.scalars().first()
 
         if existing_job and existing_job.status == "saved" and existing_job.remote_invoice_id:
             logger.info("Idempotent hit - returning existing saved invoice", tenant_id=str(tenant_id))

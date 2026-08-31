@@ -50,10 +50,12 @@ def map_fbr_schema_to_internal_payload(
         or seller_profile.get("name")
     )
     seller_ntn = (
-        seller_profile.get("ntninc")
-        or seller_profile.get("seller_ntninc")
-        or seller_profile.get("ntn")
-    )
+     seller_profile.get("ntn_cnic")      # <- ye line abhi bhi hai ya gayab ho gayi?
+     or seller_profile.get("ntninc")
+     or seller_profile.get("seller_ntninc")
+     or seller_profile.get("ntn")
+        )
+    
     seller_province = (
         seller_profile.get("province")
         or seller_profile.get("seller_province")

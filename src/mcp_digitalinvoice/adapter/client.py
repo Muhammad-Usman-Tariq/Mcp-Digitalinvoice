@@ -6,8 +6,8 @@ from typing import Dict, Any, Optional
 import httpx
 from mcp_digitalinvoice.config import settings
 from mcp_digitalinvoice.adapter.reference_data import (
-    SALE_TYPE_TO_TRANS_TYPE_ID,
-    PROVINCE_TO_SUPPLIER_ID,
+    lookup_province_code,
+    lookup_trans_type_id,
 )
 from mcp_digitalinvoice.adapter.exceptions import (
     UpstreamContractError,
@@ -186,7 +186,7 @@ class DigitalInvoicingAdapter:
         self, cookie: str, sale_type: str, seller_province: str, invoice_date: Optional[str] = None
     ) -> float:
         """Fetch sales tax rate options from live SaleTypeToRate endpoint."""
-        trans_type_id = SALE_TYPE_TO_TRANS_TYPE_ID.get(sale_type)
+        trans_type_id = lookup_trans_type_id(sale_type)
         if trans_type_id is None:
             raise UnknownSaleTypeError(
                 f"No known transTypeId mapping for sale type '{sale_type}'. "
@@ -194,7 +194,7 @@ class DigitalInvoicingAdapter:
                 f"SaleTypeToRate call when this sale type is selected."
             )
 
-        supplier_id = PROVINCE_TO_SUPPLIER_ID.get(seller_province)
+        supplier_id = lookup_province_code(seller_province)
         if supplier_id is None:
             raise UnknownProvinceError(
                 f"No known originationSupplier mapping for province '{seller_province}'."

@@ -1,5 +1,6 @@
 """Native MCP Server transport exposing tools via stdio / Streamable HTTP transport."""
 
+import os
 import asyncio
 from typing import Dict, Any, Optional, List
 from mcp.server.fastmcp import FastMCP
@@ -9,7 +10,6 @@ from mcp_digitalinvoice.database import AsyncSessionLocal, get_redis_client
 from mcp_digitalinvoice.security import hash_api_key
 from mcp_digitalinvoice.models.db import MCPAPIKey
 from mcp_digitalinvoice.models.schemas import (
-    ConnectAccountInput,
     FillInvoiceInput,
     BuyerInfo,
     InvoiceItem,
@@ -22,10 +22,11 @@ from mcp_digitalinvoice.logging import configure_logging, logger
 mcp = FastMCP("Digital Invoice Autofill MCP Server")
 
 
-async def _resolve_tenant_id(raw_key: str, db) -> Any:
-    """Resolve tenant ID from hashed raw API key."""
+async def _resolve_tenant_id(db) -> Any:
+    """Resolve tenant ID from hashed TENANT_MCP_API_KEY environment variable."""
+    raw_key = os.environ.get("TENANT_MCP_API_KEY")
     if not raw_key:
-        raise ValueError("Missing mcp_api_key for tool authorization.")
+        raise ValueError("Missing TENANT_MCP_API_KEY environment variable.")
 
     hashed = hash_api_key(raw_key)
     stmt = select(MCPAPIKey).where(
@@ -35,34 +36,13 @@ async def _resolve_tenant_id(raw_key: str, db) -> Any:
     key_record = res.scalar_one_or_none()
 
     if not key_record:
-        raise ValueError("Invalid or revoked mcp_api_key.")
+        raise ValueError("Invalid or revoked TENANT_MCP_API_KEY.")
 
     return key_record.tenant_id
 
 
 @mcp.tool()
-async def connect_account(email: str, password: str, name: str) -> Dict[str, Any]:
-    """Onboarding tool to connect a tenant's Digital Invoicing Software account.
-
-    Stores credentials securely and issues an MCP API key required for autofilling invoices.
-    """
-    async with AsyncSessionLocal() as db:
-        redis = get_redis_client()
-        service = InvoiceService(db=db, redis=redis)
-        try:
-            input_data = ConnectAccountInput(email=email, password=password, name=name)
-            res = await service.connect_account(input_data)
-            return res.model_dump()
-        except Exception as exc:
-            return {"status": "failed", "error": str(exc)}
-        finally:
-            if redis:
-                await redis.aclose()
-
-
-@mcp.tool()
 async def fill_invoice(
-    mcp_api_key: str,
     buyer: Dict[str, Any],
     items: List[Dict[str, Any]],
     meta: Optional[Dict[str, Any]] = None,
@@ -78,7 +58,7 @@ async def fill_invoice(
     async with AsyncSessionLocal() as db:
         redis = get_redis_client()
         try:
-            tenant_id = await _resolve_tenant_id(mcp_api_key, db)
+            tenant_id = await _resolve_tenant_id(db)
             service = InvoiceService(db=db, redis=redis)
 
             buyer_obj = BuyerInfo(**buyer) if buyer else None
@@ -103,35 +83,37 @@ async def fill_invoice(
 
 
 @mcp.tool()
-async def validate_invoice(mcp_api_key: str, invoice_id: str) -> Dict[str, Any]:
+async def validate_invoice(invoice_id: str) -> Dict[str, Any]:
     """Validate an invoice against tax authority rules (Out of scope / Currently not supported)."""
     async with AsyncSessionLocal() as db:
         redis = get_redis_client()
         try:
-            tenant_id = await _resolve_tenant_id(mcp_api_key, db)
+            tenant_id = await _resolve_tenant_id(db)
             service = InvoiceService(db=db, redis=redis)
             res = await service.validate_invoice(tenant_id, invoice_id)
             return res.model_dump()
         except Exception as exc:
             return {"status": "failed", "error": str(exc)}
         finally:
-            await redis.aclose()
+            if redis:
+                await redis.aclose()
 
 
 @mcp.tool()
-async def submit_invoice(mcp_api_key: str, invoice_id: str) -> Dict[str, Any]:
+async def submit_invoice(invoice_id: str) -> Dict[str, Any]:
     """Submit a validated invoice (Out of scope / Currently not supported)."""
     async with AsyncSessionLocal() as db:
         redis = get_redis_client()
         try:
-            tenant_id = await _resolve_tenant_id(mcp_api_key, db)
+            tenant_id = await _resolve_tenant_id(db)
             service = InvoiceService(db=db, redis=redis)
             res = await service.submit_invoice(tenant_id, invoice_id)
             return res.model_dump()
         except Exception as exc:
             return {"status": "failed", "error": str(exc)}
         finally:
-            await redis.aclose()
+            if redis:
+                await redis.aclose()
 
 
 def main():

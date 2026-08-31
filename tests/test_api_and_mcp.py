@@ -8,7 +8,6 @@ from httpx import AsyncClient, ASGITransport
 from mcp_digitalinvoice.main import app
 from mcp_digitalinvoice.database import get_db_session, get_redis_client
 from mcp_digitalinvoice.mcp_server.server import (
-    connect_account as mcp_connect_account,
     fill_invoice as mcp_fill_invoice,
     validate_invoice as mcp_validate_invoice,
 )

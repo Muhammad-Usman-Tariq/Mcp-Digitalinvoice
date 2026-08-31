@@ -23,7 +23,11 @@ class InvoiceItem(BaseModel):
     quantity: Optional[Any] = Field(default=None, description="Item quantity (must be positive number)")
     saleType: Optional[str] = Field(default=None, description="Type of sale e.g. Taxable Goods")
     uom: Optional[str] = Field(default=None, description="Unit of measurement")
-    rate: Optional[Any] = Field(default=None, description="Unit rate or percentage")
+    rate: Optional[Any] = Field(default=None, description="Sales tax rate as a percentage, e.g. 18 or '18%'")
+    fixedValue: Optional[Any] = Field(
+        default=None,
+        description="Fixed/notified value or retail price per unit — required by the target site.",
+    )
 
 
 class InvoiceMeta(BaseModel):

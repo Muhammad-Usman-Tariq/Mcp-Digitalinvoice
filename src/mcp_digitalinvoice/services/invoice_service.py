@@ -113,6 +113,8 @@ class InvoiceService:
                 missing.append("buyer.province")
             if not buyer.registrationType:
                 missing.append("buyer.registrationType")
+            if buyer.registrationType == "Registered" and not buyer.ntnCnic:
+                missing.append("buyer.ntnCnic")
 
         items = input_data.items
         if not items:
@@ -123,13 +125,15 @@ class InvoiceService:
                     missing.append(f"items[{idx}].hsCode")
                 if item.quantity is None:
                     missing.append(f"items[{idx}].quantity")
+                if item.fixedValue is None:
+                    missing.append(f"items[{idx}].fixedValue")
                 if not item.saleType:
                     missing.append(f"items[{idx}].saleType")
 
         return missing
 
     def _check_sanity_bounds(self, input_data: FillInvoiceInput) -> Optional[str]:
-        """Verify numeric bounds for item quantities and rates."""
+        """Verify numeric bounds for item quantities, rates, and fixed values."""
         if not input_data.items:
             return None
         for idx, item in enumerate(input_data.items):
@@ -140,6 +144,13 @@ class InvoiceService:
                         return f"Item {idx} quantity must be a positive number, got {qty}."
                 except (ValueError, TypeError):
                     return f"Item {idx} quantity is not a valid number."
+            if item.fixedValue is not None:
+                try:
+                    fv = float(item.fixedValue)
+                    if fv <= 0:
+                        return f"Item {idx} fixedValue must be a positive number, got {fv}."
+                except (ValueError, TypeError):
+                    return f"Item {idx} fixedValue is not a valid number."
         return None
 
     async def fill_invoice(

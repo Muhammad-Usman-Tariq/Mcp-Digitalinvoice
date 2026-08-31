@@ -125,6 +125,7 @@ def synthetic_item_data():
         "hsCode": fake.bothify(text="####.##.##"),
         "description": fake.catch_phrase(),
         "quantity": fake.random_int(min=1, max=100),
+        "fixedValue": fake.random_int(min=50, max=500),
         "saleType": "Taxable Goods",
         "uom": "PCS",
         "rate": f"{fake.random_int(min=5, max=25)}%",

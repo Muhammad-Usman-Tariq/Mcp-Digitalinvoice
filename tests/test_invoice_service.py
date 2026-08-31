@@ -55,6 +55,52 @@ async def test_fill_invoice_validation_needs_info(db_session, fake_redis):
 
 
 @pytest.mark.asyncio
+async def test_fill_invoice_missing_fixed_value(db_session, fake_redis):
+    service = InvoiceService(db=db_session, redis=fake_redis)
+
+    # Item missing fixedValue
+    inp = FillInvoiceInput(
+        buyer=BuyerInfo(businessName="Test Co", province="Punjab", registrationType="Unregistered"),
+        items=[InvoiceItem(hsCode="1234.56", quantity=10, saleType="Goods")],  # fixedValue is None
+    )
+
+    res = await service.fill_invoice(uuid.uuid4(), inp)
+    assert res.status == "needs_info"
+    assert "items[0].fixedValue" in res.missing_fields
+
+
+@pytest.mark.asyncio
+async def test_fill_invoice_registered_buyer_requires_ntn(db_session, fake_redis):
+    service = InvoiceService(db=db_session, redis=fake_redis)
+
+    # Registered buyer missing ntnCnic
+    inp = FillInvoiceInput(
+        buyer=BuyerInfo(businessName="Test Co", province="Punjab", registrationType="Registered"),  # ntnCnic is None
+        items=[InvoiceItem(hsCode="1234.56", quantity=10, fixedValue=100, saleType="Goods")],
+    )
+
+    res = await service.fill_invoice(uuid.uuid4(), inp)
+    assert res.status == "needs_info"
+    assert "buyer.ntnCnic" in res.missing_fields
+
+
+@pytest.mark.asyncio
+async def test_fill_invoice_unregistered_buyer_allows_missing_ntn(db_session, fake_redis):
+    service = InvoiceService(db=db_session, redis=fake_redis)
+
+    # Unregistered buyer without ntnCnic -> pre-flight validation passes (missing_fields does not contain buyer.ntnCnic)
+    inp = FillInvoiceInput(
+        buyer=BuyerInfo(businessName="Test Co", province="Punjab", registrationType="Unregistered"),
+        items=[InvoiceItem(hsCode="1234.56", quantity=10, fixedValue=100, saleType="Goods")],
+    )
+
+    missing = service._validate_fill_input(inp)
+    assert "buyer.ntnCnic" not in missing
+    assert len(missing) == 0
+
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_fill_invoice_auto_fetch_rate_when_omitted(
     db_session, fake_redis, synthetic_tenant_data, synthetic_buyer_data, synthetic_item_data

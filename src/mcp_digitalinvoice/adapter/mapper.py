@@ -5,6 +5,31 @@ from typing import Dict, Any
 from mcp_digitalinvoice.models.schemas import FillInvoiceInput, BuyerInfo, InvoiceMeta
 from mcp_digitalinvoice.adapter.exceptions import MissingSellerProfileError
 
+# TODO: In future, if description or uom are omitted by the caller, auto-fill them by calling the target site's HS_UOM lookup endpoint for the selected hsCode.
+
+
+def _parse_rate_percent(raw_rate: Any) -> float:
+    """Accepts '18%', '18', 18, 18.0, or None and returns a plain float like 18.0."""
+    if raw_rate is None:
+        return 0.0
+    if isinstance(raw_rate, (int, float)):
+        return float(raw_rate)
+    cleaned = str(raw_rate).strip().rstrip("%").strip()
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
+
+
+def _parse_number(raw: Any) -> float:
+    """Safely convert raw number input to float, returning 0.0 on failure/None."""
+    if raw is None:
+        return 0.0
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return 0.0
+
 
 def map_fbr_schema_to_internal_payload(
     input_data: FillInvoiceInput, seller_profile: Dict[str, Any]
@@ -25,8 +50,7 @@ def map_fbr_schema_to_internal_payload(
         or seller_profile.get("name")
     )
     seller_ntn = (
-        seller_profile.get("ntn_cnic")
-        or seller_profile.get("ntninc")
+        seller_profile.get("ntninc")
         or seller_profile.get("seller_ntninc")
         or seller_profile.get("ntn")
     )
@@ -78,22 +102,33 @@ def map_fbr_schema_to_internal_payload(
 
     details_data = []
     for item in items:
-        qty = 0.0
-        if item.quantity is not None:
-            try:
-                qty = float(item.quantity)
-            except (ValueError, TypeError):
-                qty = 0.0
+        qty = _parse_number(item.quantity)
+        fixed_value = _parse_number(item.fixedValue)
+        rate_pct = _parse_rate_percent(item.rate)
+
+        value_excl_st = round(qty * fixed_value, 2)
+        sales_tax = round(value_excl_st * (rate_pct / 100), 2)
+        total_value = round(value_excl_st + sales_tax, 2)
 
         details_data.append(
             {
-                "invoice_id": "",
                 "hscode": item.hsCode or "",
-                "description": item.description or "",
+                "product_description": item.description or "",
                 "quantity": qty,
                 "sale_type": item.saleType or "",
                 "uom": item.uom or "",
-                "rate": str(item.rate) if item.rate is not None else "",
+                "rate": rate_pct,
+                "fixed_invoice_value_on_retail_price": fixed_value,
+                "value_sales_excluding_st": value_excl_st,
+                "sales_tax_applicable": sales_tax,
+                "total_value": total_value,
+                "extra_tax": 0,
+                "discount": None,
+                "fed_payable": None,
+                "further_tax": None,
+                "sales_tax_withheld_at_source": None,
+                "sr_no_item_serial_no": "",
+                "sr_no_schedule_no": "",
             }
         )
 

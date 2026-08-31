@@ -291,7 +291,7 @@ async def test_edge_case_8_concurrency_tenant_lock(db_session, fake_redis):
     service.redis = BlockingRedis()
     inp = FillInvoiceInput(
         buyer=BuyerInfo(businessName="Test", province="State", registrationType="Reg"),
-        items=[InvoiceItem(hsCode="1234", quantity=1, saleType="Taxable")],
+        items=[InvoiceItem(hsCode="1234", quantity=1, fixedValue=100, saleType="Taxable")],
     )
 
     res = await service.fill_invoice(tenant_id, inp)
@@ -405,8 +405,8 @@ async def test_edge_case_12_malformed_quantity(db_session, fake_redis):
     service = InvoiceService(db=db_session, redis=fake_redis)
 
     inp = FillInvoiceInput(
-        buyer=BuyerInfo(businessName="Co", province="State", registrationType="Reg"),
-        items=[InvoiceItem(hsCode="1234", quantity=-5, saleType="Goods")],
+        buyer=BuyerInfo(businessName="Co", province="State", registrationType="Unregistered"),
+        items=[InvoiceItem(hsCode="1234", quantity=-5, fixedValue=100, saleType="Goods")],
     )
 
     res = await service.fill_invoice(uuid.uuid4(), inp)

@@ -154,3 +154,64 @@ def test_reference_data_normalization_and_lookups():
     assert lookup_trans_type_id("Nonexistent Sale Type") is None
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_invoice_transport_error_retry_success():
+    base_url = "https://www.digitalinvoicingsoftware.com"
+    route = respx.post(f"{base_url}/api/invoices").mock(
+        side_effect=[
+            httpx.TimeoutException("Timeout on 1st attempt"),
+            httpx.Response(201, json={"id": "inv_trans_123", "status": "draft"}),
+        ]
+    )
+
+    adapter = DigitalInvoicingAdapter(base_url=base_url)
+    res = await adapter.create_or_update_invoice("cookie", {"test": "data"})
+    assert res["id"] == "inv_trans_123"
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_invoice_unexpected_status_retry_success():
+    base_url = "https://www.digitalinvoicingsoftware.com"
+    route = respx.post(f"{base_url}/api/invoices").mock(
+        side_effect=[
+            httpx.Response(201, json={"id": "inv_failed_123", "status": "Failed"}),
+            httpx.Response(201, json={"id": "inv_failed_123", "status": "draft"}),
+        ]
+    )
+
+    adapter = DigitalInvoicingAdapter(base_url=base_url)
+    res = await adapter.create_or_update_invoice("cookie", {"test": "data"})
+    assert res["id"] == "inv_failed_123"
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_invoice_retries_exhausted_raises_upstream_contract_error():
+    base_url = "https://www.digitalinvoicingsoftware.com"
+
+    # Test transport failure exhaustion (3 attempts)
+    route1 = respx.post(f"{base_url}/api/invoices").mock(
+        side_effect=httpx.TimeoutException("Persistent timeout")
+    )
+    adapter = DigitalInvoicingAdapter(base_url=base_url)
+    with pytest.raises(UpstreamContractError) as exc1:
+        await adapter.create_or_update_invoice("cookie", {"test": "data"})
+    assert "transport error" in str(exc1.value).lower()
+    assert route1.call_count == 3
+
+    # Test unexpected status exhaustion (3 attempts)
+    respx.clear()
+    route2 = respx.post(f"{base_url}/api/invoices").respond(
+        status_code=201, json={"id": "inv_123", "status": "Failed"}
+    )
+    with pytest.raises(UpstreamContractError) as exc2:
+        await adapter.create_or_update_invoice("cookie", {"test": "data"})
+    assert "unexpected status 'failed'" in str(exc2.value).lower()
+    assert route2.call_count == 3
+
+
+

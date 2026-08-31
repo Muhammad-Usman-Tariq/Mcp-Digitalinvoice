@@ -137,36 +137,61 @@ class DigitalInvoicingAdapter:
         }
 
     async def create_or_update_invoice(self, cookie: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """POST /api/invoices to create a draft invoice."""
+        """POST /api/invoices to create a draft invoice with transient transport retry and status check."""
         headers = {"Cookie": f"fbr_session={cookie}" if not cookie.startswith("fbr_session=") else cookie}
+        max_transport_retries = 2
 
-        try:
-            response = await self._request(
-                "POST", "/api/invoices", headers=headers, json_body=payload
-            )
-        except httpx.TimeoutException as exc:
-            logger.warning("Invoice POST timeout", error=str(exc))
-            raise UpstreamServerError("Timeout creating invoice on Digital Invoicing Software.") from exc
-        except httpx.RequestError as exc:
-            logger.warning("Invoice POST network error", error=str(exc))
-            raise AdapterError("Network failure during invoice save.") from exc
+        for attempt in range(max_transport_retries + 1):
+            try:
+                response = await self._request(
+                    "POST", "/api/invoices", headers=headers, json_body=payload
+                )
+            except (httpx.TransportError, httpx.RequestError) as exc:
+                logger.warning(
+                    "Invoice POST transport error, retrying",
+                    attempt=attempt + 1,
+                    max_attempts=max_transport_retries + 1,
+                    error=str(exc),
+                )
+                if attempt == max_transport_retries:
+                    raise UpstreamContractError(
+                        f"Request to Digital Invoicing Software failed after "
+                        f"{max_transport_retries + 1} attempts (transport error): {exc}"
+                    ) from exc
+                continue
 
-        if response.status_code in (401, 403):
-            raise AuthenticationError("Session expired or unauthorized for Digital Invoicing Software.")
-        elif response.status_code >= 500:
-            raise UpstreamServerError(f"Digital Invoicing Software returned {response.status_code} error.")
-        elif response.status_code not in (200, 201):
-            raise AdapterError(f"Unexpected status code {response.status_code} during invoice creation.")
+            if response.status_code in (401, 403):
+                raise AuthenticationError("Session expired or unauthorized for Digital Invoicing Software.")
+            elif response.status_code >= 500:
+                raise UpstreamServerError(f"Digital Invoicing Software returned {response.status_code} error.")
+            elif response.status_code not in (200, 201):
+                raise AdapterError(f"Unexpected status code {response.status_code} during invoice creation.")
 
-        try:
-            data = response.json()
-        except Exception as exc:
-            raise UpstreamContractError("Response body is not valid JSON.") from exc
+            try:
+                data = response.json()
+            except Exception as exc:
+                raise UpstreamContractError("Response body is not valid JSON.") from exc
 
-        if not isinstance(data, dict) or "id" not in data:
-            raise UpstreamContractError("Response missing mandatory 'id' field in invoice object.")
+            if not isinstance(data, dict) or "id" not in data:
+                raise UpstreamContractError("Response missing mandatory 'id' field in invoice object.")
 
-        return data
+            invoice_status = (data.get("status") or "").strip().lower()
+            if invoice_status not in ("draft", ""):
+                logger.warning(
+                    "Invoice created with unexpected status",
+                    attempt=attempt + 1,
+                    status=invoice_status,
+                )
+                if attempt < max_transport_retries:
+                    continue
+                raise UpstreamContractError(
+                    f"Invoice was created but landed in unexpected status "
+                    f"'{invoice_status}' after {max_transport_retries + 1} attempts."
+                )
+
+            return data
+
+        raise UpstreamContractError(f"Invoice creation failed after {max_transport_retries + 1} attempts.")
 
     def _format_date_for_rate_lookup(self, invoice_date: Optional[str]) -> str:
         """Format ISO date ('2026-08-31') to target site format ('31-August-2026')."""

@@ -453,7 +453,7 @@ async def test_edge_case_13_network_timeout(
     res = await service.fill_invoice(tenant_id, inp)
 
     assert res.status == "failed"
-    assert "Unknown outcome" in res.error or "Verify manually" in res.error
+    assert "transport error" in res.error.lower() or "attempts" in res.error.lower()
 
 
 # Edge Case 14: Out-of-scope tools (validate & submit) -> return clear not supported

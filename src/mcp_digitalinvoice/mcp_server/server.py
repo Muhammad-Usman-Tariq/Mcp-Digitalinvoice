@@ -134,6 +134,7 @@ def main():
     """
     configure_logging()
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    # Note: Redundant for production since main.py serves the MCP app directly; kept only as a standalone local-testing fallback.
     if transport == "streamable-http":
         import uvicorn
         import anyio

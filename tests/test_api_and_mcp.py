@@ -24,6 +24,22 @@ async def test_health_check():
 
 
 @pytest.mark.asyncio
+async def test_setup_page():
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        res = await client.get("/setup")
+        assert res.status_code == 200
+        assert "text/html" in res.headers["content-type"]
+        assert "Digital Invoicing Software MCP Setup" in res.text
+        assert 'id="connect-form"' in res.text
+        assert 'id="email"' in res.text
+        assert 'id="password"' in res.text
+        assert 'id="business_name"' in res.text
+
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_rest_api_connect_and_fill(
     db_session, fake_redis, synthetic_tenant_data, synthetic_buyer_data, synthetic_item_data

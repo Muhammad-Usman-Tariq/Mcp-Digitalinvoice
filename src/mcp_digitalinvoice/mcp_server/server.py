@@ -117,9 +117,25 @@ async def submit_invoice(invoice_id: str) -> Dict[str, Any]:
 
 
 def main():
-    """Run the MCP server stdio transport."""
+    """Run the MCP server.
+
+    Defaults to stdio transport (for local clients like Claude Desktop,
+    which spawn this process directly and communicate over stdin/stdout).
+
+    Set MCP_TRANSPORT=streamable-http (with optional MCP_HTTP_PORT, default
+    8001) to instead run as a standalone HTTP server exposing the MCP
+    protocol at /mcp — for remote/hosted deployments (e.g. Coolify) that
+    any Streamable-HTTP-capable MCP client (Claude, ChatGPT Developer Mode,
+    Gemini, etc.) can connect to directly over the network.
+    """
     configure_logging()
-    mcp.run(transport="stdio")
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    if transport == "streamable-http":
+        port = int(os.environ.get("MCP_HTTP_PORT", "8001"))
+        logger.info("Starting MCP server (streamable-http)", port=port)
+        mcp.run(transport="streamable-http", host="0.0.0.0", port=port, path="/mcp")
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

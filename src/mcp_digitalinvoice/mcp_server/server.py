@@ -17,16 +17,20 @@ from mcp_digitalinvoice.models.schemas import (
 )
 from mcp_digitalinvoice.services.invoice_service import InvoiceService
 from mcp_digitalinvoice.logging import configure_logging, logger
+from mcp_digitalinvoice.mcp_server.middleware import (
+    mcp_api_key_ctx,
+    MCPAuthHeaderMiddleware,
+)
 
 # Initialize FastMCP Server
 mcp = FastMCP("Digital Invoice Autofill MCP Server")
 
 
 async def _resolve_tenant_id(db) -> Any:
-    """Resolve tenant ID from hashed TENANT_MCP_API_KEY environment variable."""
-    raw_key = os.environ.get("TENANT_MCP_API_KEY")
+    """Resolve tenant ID from contextvar (per-request HTTP header) or TENANT_MCP_API_KEY env var."""
+    raw_key = mcp_api_key_ctx.get() or os.environ.get("TENANT_MCP_API_KEY")
     if not raw_key:
-        raise ValueError("Missing TENANT_MCP_API_KEY environment variable.")
+        raise ValueError("Missing TENANT_MCP_API_KEY environment variable or X-MCP-API-Key header.")
 
     hashed = hash_api_key(raw_key)
     stmt = select(MCPAPIKey).where(
@@ -131,9 +135,16 @@ def main():
     configure_logging()
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport == "streamable-http":
+        import uvicorn
+        import anyio
+
         port = int(os.environ.get("MCP_HTTP_PORT", "8001"))
         logger.info("Starting MCP server (streamable-http)", port=port)
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port, path="/mcp")
+        starlette_app = mcp.streamable_http_app()
+        app = MCPAuthHeaderMiddleware(starlette_app)
+        config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+        server = uvicorn.Server(config)
+        anyio.run(server.serve)
     else:
         mcp.run(transport="stdio")
 

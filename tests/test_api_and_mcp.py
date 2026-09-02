@@ -90,3 +90,42 @@ async def test_rest_api_connect_and_fill(
             assert fill_res.json()["remote_invoice_id"] == remote_id
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_mcp_auth_header_middleware():
+    from mcp_digitalinvoice.mcp_server.middleware import (
+        MCPAuthHeaderMiddleware,
+        mcp_api_key_ctx,
+    )
+
+    captured_keys = []
+
+    async def dummy_app(scope, receive, send):
+        captured_keys.append(mcp_api_key_ctx.get())
+
+    middleware = MCPAuthHeaderMiddleware(dummy_app)
+
+    # 1. Test X-MCP-API-Key header
+    scope1 = {
+        "type": "http",
+        "headers": [(b"x-mcp-api-key", b"test_key_123")],
+    }
+    await middleware(scope1, None, None)
+    assert captured_keys[-1] == "test_key_123"
+    assert mcp_api_key_ctx.get() is None
+
+    # 2. Test Authorization Bearer header
+    scope2 = {
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer bearer_key_456")],
+    }
+    await middleware(scope2, None, None)
+    assert captured_keys[-1] == "bearer_key_456"
+    assert mcp_api_key_ctx.get() is None
+
+    # 3. Test non-http scope
+    scope3 = {"type": "websocket"}
+    await middleware(scope3, None, None)
+    assert captured_keys[-1] is None
+

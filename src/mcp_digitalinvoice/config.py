@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: str = "INFO"
+    mcp_allowed_hosts: str = "127.0.0.1,localhost"
+
 
 
 settings = Settings()

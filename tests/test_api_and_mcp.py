@@ -40,7 +40,22 @@ async def test_setup_page():
 
 
 @pytest.mark.asyncio
+async def test_mcp_transport_security_configured():
+    from mcp_digitalinvoice.mcp_server.server import mcp
+    from mcp_digitalinvoice.config import settings
+
+    expected_hosts = [h.strip() for h in settings.mcp_allowed_hosts.split(",") if h.strip()]
+    expected_origins = [f"https://{h}" for h in expected_hosts]
+
+    assert mcp.settings.transport_security is not None
+    assert mcp.settings.transport_security.enable_dns_rebinding_protection is True
+    assert mcp.settings.transport_security.allowed_hosts == expected_hosts
+    assert mcp.settings.transport_security.allowed_origins == expected_origins
+
+
+@pytest.mark.asyncio
 @respx.mock
+
 async def test_rest_api_connect_and_fill(
     db_session, fake_redis, synthetic_tenant_data, synthetic_buyer_data, synthetic_item_data
 ):
@@ -131,17 +146,40 @@ async def test_mcp_auth_header_middleware():
     assert captured_keys[-1] == "test_key_123"
     assert mcp_api_key_ctx.get() is None
 
-    # 2. Test Authorization Bearer header
+    # 2. Test x-api-key header
     scope2 = {
+        "type": "http",
+        "headers": [(b"x-api-key", b"test_key_x_api_key")],
+    }
+    await middleware(scope2, None, None)
+    assert captured_keys[-1] == "test_key_x_api_key"
+    assert mcp_api_key_ctx.get() is None
+
+    # 3. Test Authorization Bearer header
+    scope3 = {
         "type": "http",
         "headers": [(b"authorization", b"Bearer bearer_key_456")],
     }
-    await middleware(scope2, None, None)
+    await middleware(scope3, None, None)
     assert captured_keys[-1] == "bearer_key_456"
     assert mcp_api_key_ctx.get() is None
 
-    # 3. Test non-http scope
-    scope3 = {"type": "websocket"}
-    await middleware(scope3, None, None)
+    # 4. Test priority order: X-MCP-API-Key > x-api-key > Authorization
+    scope4 = {
+        "type": "http",
+        "headers": [
+            (b"authorization", b"Bearer bearer_key_456"),
+            (b"x-api-key", b"x_api_key_override"),
+            (b"x-mcp-api-key", b"mcp_key_highest_priority"),
+        ],
+    }
+    await middleware(scope4, None, None)
+    assert captured_keys[-1] == "mcp_key_highest_priority"
+    assert mcp_api_key_ctx.get() is None
+
+    # 5. Test non-http scope
+    scope5 = {"type": "websocket"}
+    await middleware(scope5, None, None)
     assert captured_keys[-1] is None
+
 

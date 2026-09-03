@@ -8,7 +8,15 @@ from mcp_digitalinvoice.config import settings
 from mcp_digitalinvoice.logging import configure_logging, logger
 from mcp_digitalinvoice.mcp_server.server import mcp
 from mcp_digitalinvoice.mcp_server.middleware import MCPAuthHeaderMiddleware
+from mcp.server.transport_security import TransportSecuritySettings
 
+_allowed_hosts = [h.strip() for h in settings.mcp_allowed_hosts.split(",") if h.strip()]
+
+mcp.settings.transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=_allowed_hosts,
+    allowed_origins=[f"https://{h}" for h in _allowed_hosts],
+)
 mcp_asgi_app = mcp.streamable_http_app()
 
 

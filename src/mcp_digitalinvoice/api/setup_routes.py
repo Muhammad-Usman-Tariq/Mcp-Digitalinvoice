@@ -124,6 +124,40 @@ SETUP_HTML_TEMPLATE = """<!DOCTYPE html>
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
 
+    .password-wrap {
+      position: relative;
+      width: 100%;
+    }
+
+    .password-wrap input {
+      padding-right: 42px;
+    }
+
+    .toggle-password-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: color 0.15s ease;
+    }
+
+    .toggle-password-btn:hover {
+      color: var(--primary);
+    }
+
+    .eye-icon {
+      display: block;
+    }
+
     input:focus {
       outline: none;
       border-color: var(--primary);
@@ -498,7 +532,19 @@ SETUP_HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div class="form-group">
           <label for="password">Digital Invoicing Software Password</label>
-          <input type="password" id="password" required placeholder="••••••••••••">
+          <div class="password-wrap">
+            <input type="password" id="password" required placeholder="••••••••••••">
+            <button type="button" id="toggle-password-btn" class="toggle-password-btn" onclick="togglePasswordVisibility()" aria-label="Toggle password visibility">
+              <svg id="eye-icon-open" class="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg id="eye-icon-closed" class="eye-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <button type="submit" id="submit-btn" class="btn">Connect Account & Generate MCP Key</button>
@@ -761,13 +807,36 @@ SETUP_HTML_TEMPLATE = """<!DOCTYPE html>
       <!-- TAB 5: OPENAI -->
       <div id="tab-openai" class="tab-pane" role="tabpanel">
         <div class="openai-box">
-          <p>OpenAI supports connecting to this server through their REST API (the Responses API). This is for developers integrating this into their own OpenAI-based application or script. [Contact us / see developer docs] for a ready-to-use code example.</p>
+          <p>OpenAI supports connecting to this server through their REST API (the Responses API). This is for developers integrating this into their own OpenAI-based application or script.</p>
+          <p style="margin-top: 14px; font-size: 13.5px; color: var(--text-muted);">Replace YOUR_OPENAI_API_KEY with your own OpenAI API key from platform.openai.com — this is separate from the key above.</p>
+          <div class="code-box">
+            <div class="code-box-header">
+              <span class="code-box-label">Python (Responses API)</span>
+              <button type="button" class="copy-btn-sm" onclick="copySnippet('openai-code', this)">Copy</button>
+            </div>
+            <pre id="openai-code"></pre>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
+    function togglePasswordVisibility() {
+      const passInput = document.getElementById('password');
+      const eyeOpen = document.getElementById('eye-icon-open');
+      const eyeClosed = document.getElementById('eye-icon-closed');
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        eyeOpen.style.display = 'none';
+        eyeClosed.style.display = 'block';
+      } else {
+        passInput.type = 'password';
+        eyeOpen.style.display = 'block';
+        eyeClosed.style.display = 'none';
+      }
+    }
+
     function makeServerSlug(str) {
       const clean = (str || '')
         .toString()
@@ -818,6 +887,13 @@ SETUP_HTML_TEMPLATE = """<!DOCTYPE html>
 
       // Immediately clear password from input element
       passInput.value = '';
+      passInput.type = 'password';
+      const eyeOpen = document.getElementById('eye-icon-open');
+      const eyeClosed = document.getElementById('eye-icon-closed');
+      if (eyeOpen && eyeClosed) {
+        eyeOpen.style.display = 'block';
+        eyeClosed.style.display = 'none';
+      }
 
       errBox.style.display = 'none';
       errBox.textContent = '';
@@ -908,6 +984,30 @@ SETUP_HTML_TEMPLATE = """<!DOCTYPE html>
           }
         };
         document.getElementById('antigravity-code').textContent = JSON.stringify(antigravityServerConfig, null, 2);
+
+        // 6. Tab 5: OpenAI
+        const openaiPython = `import openai
+
+client = openai.OpenAI(api_key="YOUR_OPENAI_API_KEY")  # from platform.openai.com
+
+response = client.responses.create(
+    model="gpt-5",
+    tools=[
+        {
+            "type": "mcp",
+            "server_label": "digital-invoicing",
+            "server_url": "${mcpUrl}",
+            "headers": {
+                "x-api-key": "${apiKey}"
+            },
+            "require_approval": "never"
+        }
+    ],
+    input="Fill this invoice: [describe the invoice details here]"
+)
+
+print(response.output_text)`;
+        document.getElementById('openai-code').textContent = openaiPython;
 
         // Switch to Step 2
         document.getElementById('setup-step-1').style.display = 'none';

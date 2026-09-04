@@ -47,6 +47,12 @@ async def test_setup_page():
         assert "https://claude.ai/customize/connectors" in res.text
         assert "serverUrl" in res.text
         assert "X-MCP-API-Key" in res.text
+        assert 'id="toggle-password-btn"' in res.text
+        assert 'id="eye-icon-open"' in res.text
+        assert 'id="eye-icon-closed"' in res.text
+        assert 'id="openai-code"' in res.text
+        assert "Replace YOUR_OPENAI_API_KEY with your own OpenAI API key" in res.text
+        assert "[Contact us / see developer docs]" not in res.text
 
 
 

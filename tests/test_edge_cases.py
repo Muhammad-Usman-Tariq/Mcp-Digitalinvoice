@@ -265,11 +265,12 @@ async def test_edge_case_7_idempotency_duplicate_submission(
     assert res1.remote_invoice_id == remote_id
     assert inv_route.call_count == 1
 
-    # Second call - same document hash -> idempotency hit
+    # Second call - same document hash -> creates second invoice (duplicate blocking removed)
     res2 = await service.fill_invoice(tenant_id, inp)
     assert res2.status == "saved"
     assert res2.remote_invoice_id == remote_id
-    assert inv_route.call_count == 1  # No second HTTP call made
+    assert inv_route.call_count == 2  # Fresh second HTTP call made
+
 
 
 # Edge Case 8: Concurrent requests per tenant -> lock acquired

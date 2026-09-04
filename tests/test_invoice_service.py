@@ -211,15 +211,49 @@ async def test_fill_invoice_explicit_rate_bypasses_lookup(
 
 
 @pytest.mark.asyncio
-async def test_fill_invoice_idempotency_multiple_historical_jobs(
-    db_session, fake_redis, synthetic_buyer_data, synthetic_item_data
+@respx.mock
+async def test_fill_invoice_multiple_historical_jobs_proceeds_to_new_save(
+    db_session, fake_redis, synthetic_tenant_data, synthetic_buyer_data, synthetic_item_data
 ):
-    """Regression test: multiple invoice_jobs rows for same document hash should not raise MultipleResultsFound."""
+    """Confirm that existing historical jobs with the same document hash do not block a new save."""
     from mcp_digitalinvoice.models.db import InvoiceJob
     from mcp_digitalinvoice.services.invoice_service import utc_now
     import datetime
 
-    tenant_id = uuid.uuid4()
+    base_url = "https://www.digitalinvoicingsoftware.com"
+    remote_id = "inv_remote_new_123"
+
+    respx.post(f"{base_url}/api/auth/login").respond(
+        status_code=200,
+        headers={"Set-Cookie": "fbr_session=test_cookie; Max-Age=7199"},
+        json={
+            "user": {
+                "id": 101,
+                "company_id": 202,
+                "company": {
+                    "business_name": synthetic_tenant_data["name"],
+                    "ntninc": synthetic_tenant_data["ntn"],
+                    "province": synthetic_tenant_data["province"],
+                    "address": synthetic_tenant_data["address"],
+                },
+            }
+        },
+    )
+    respx.post(f"{base_url}/api/invoices").respond(
+        status_code=201, json={"id": remote_id, "status": "draft"}
+    )
+
+    adapter = DigitalInvoicingAdapter(base_url=base_url)
+    service = InvoiceService(db=db_session, redis=fake_redis, adapter=adapter)
+
+    conn = await service.connect_account(
+        ConnectAccountInput(
+            email=synthetic_tenant_data["email"],
+            password=synthetic_tenant_data["password"],
+            name=synthetic_tenant_data["name"],
+        )
+    )
+    tenant_id = uuid.UUID(conn.tenant_id)
     doc_hash = "test_doc_hash_12345"
 
     # Job 1: Older failed attempt
@@ -231,28 +265,29 @@ async def test_fill_invoice_idempotency_multiple_historical_jobs(
         error_detail="Network error",
         created_at=utc_now() - datetime.timedelta(minutes=10),
     )
-    # Job 2: Later successful retry
+    # Job 2: Prior successful job
     job2 = InvoiceJob(
         tenant_id=tenant_id,
         source_document_hash=doc_hash,
         extracted_payload="{}",
         status="saved",
-        remote_invoice_id="inv_remote_999",
+        remote_invoice_id="inv_remote_old_999",
         created_at=utc_now() - datetime.timedelta(minutes=5),
     )
     db_session.add_all([job1, job2])
     await db_session.commit()
 
-    service = InvoiceService(db=db_session, redis=fake_redis)
     inp = FillInvoiceInput(
         buyer=BuyerInfo(**synthetic_buyer_data),
         items=[InvoiceItem(**synthetic_item_data)],
         sourceDocumentHash=doc_hash,
     )
 
-    # Calling fill_invoice with same document hash should return job2's result without MultipleResultsFound exception
+    # Calling fill_invoice with same document hash should NOT return old job2 ("inv_remote_old_999"),
+    # but create a new save returning "inv_remote_new_123".
     res = await service.fill_invoice(tenant_id, inp)
     assert res.status == "saved"
-    assert res.remote_invoice_id == "inv_remote_999"
+    assert res.remote_invoice_id == "inv_remote_new_123"
+
 
 

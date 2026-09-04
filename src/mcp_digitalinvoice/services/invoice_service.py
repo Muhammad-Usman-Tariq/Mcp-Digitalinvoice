@@ -177,30 +177,12 @@ class InvoiceService:
                 summary="Input extraction sanity bounds check failed.",
             )
 
-        # Step 3: Compute document hash for idempotency
+        # Step 3: Compute document hash for traceability
         if input_data.sourceDocumentHash:
             doc_hash = input_data.sourceDocumentHash
         else:
             payload_str = json.dumps(input_data.model_dump(), sort_keys=True)
             doc_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
-
-        existing_job_res = await self.db.execute(
-            select(InvoiceJob)
-            .where(
-                InvoiceJob.tenant_id == tenant_id,
-                InvoiceJob.source_document_hash == doc_hash,
-            )
-            .order_by(InvoiceJob.created_at.desc())
-        )
-        existing_job = existing_job_res.scalars().first()
-
-        if existing_job and existing_job.status == "saved" and existing_job.remote_invoice_id:
-            logger.info("Idempotent hit - returning existing saved invoice", tenant_id=str(tenant_id))
-            return FillInvoiceResult(
-                status="saved",
-                remote_invoice_id=existing_job.remote_invoice_id,
-                summary="Invoice already saved for this source document.",
-            )
 
         # Step 4: Per-Tenant Distributed Lock
         lock = None

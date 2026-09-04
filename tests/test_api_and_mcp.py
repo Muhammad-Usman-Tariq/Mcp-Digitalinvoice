@@ -36,6 +36,17 @@ async def test_setup_page():
         assert 'id="email"' in res.text
         assert 'id="password"' in res.text
         assert 'id="business_name"' in res.text
+        assert 'id="tab-claude"' in res.text
+        assert 'id="tab-cursor"' in res.text
+        assert 'id="tab-windsurf"' in res.text
+        assert 'id="tab-antigravity"' in res.text
+        assert 'id="tab-openai"' in res.text
+        assert 'id="claude-auto-btn"' in res.text
+        assert 'id="cursor-auto-btn"' in res.text
+        assert "cursor://anysphere.cursor-deeplink/mcp/install" in res.text
+        assert "https://claude.ai/customize/connectors" in res.text
+        assert "serverUrl" in res.text
+        assert "X-MCP-API-Key" in res.text
 
 
 

@@ -23,7 +23,7 @@ from mcp_digitalinvoice.mcp_server.middleware import (
 )
 
 # Initialize FastMCP Server
-mcp = FastMCP("Digital Invoice Autofill MCP Server")
+mcp = FastMCP("Digital Invoice Autofill MCP Server", stateless_http=True)
 
 
 async def _resolve_tenant_id(db) -> Any:

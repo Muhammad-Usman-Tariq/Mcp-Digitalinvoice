@@ -200,3 +200,114 @@ async def test_mcp_auth_header_middleware():
     assert captured_keys[-1] is None
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_reports_service_and_adapter(
+    db_session, fake_redis, synthetic_tenant_data
+):
+    base_url = "https://www.digitalinvoicingsoftware.com"
+    company_id = "comp_12345"
+
+    respx.post(f"{base_url}/api/auth/login").respond(
+        status_code=200,
+        headers={"Set-Cookie": "fbr_session=api_test_cookie; Max-Age=7199"},
+        json={
+            "user": {
+                "id": 101,
+                "email": synthetic_tenant_data["email"],
+                "company_id": company_id,
+            }
+        },
+    )
+
+    from mcp_digitalinvoice.services.invoice_service import InvoiceService
+    from mcp_digitalinvoice.models.schemas import ConnectAccountInput
+
+    inv_svc = InvoiceService(db=db_session, redis=fake_redis)
+    conn_res = await inv_svc.connect_account(
+        ConnectAccountInput(
+            email=synthetic_tenant_data["email"],
+            password=synthetic_tenant_data["password"],
+            name=synthetic_tenant_data["name"],
+        )
+    )
+    tenant_id = uuid.UUID(conn_res.tenant_id)
+
+    mock_invoices = [
+        {
+            "invoice_ref_no": "INV-001",
+            "invoice_date": "2026-09-01",
+            "buyer_business_name": "Alpha Corp",
+            "invoice_items": [
+                {
+                    "product_description": "Steel Rod",
+                    "quantity": 10,
+                    "value_sales_excluding_st": 1000,
+                    "sales_tax_applicable": 180,
+                    "total_value": 1180,
+                    "sale_type": "Standard",
+                },
+                {
+                    "product_description": "Iron Sheet",
+                    "quantity": 5,
+                    "value_sales_excluding_st": 500,
+                    "sales_tax_applicable": 90,
+                    "total_value": 590,
+                    "sale_type": "Standard",
+                },
+            ],
+        },
+        {
+            "invoice_ref_no": "INV-002",
+            "invoice_date": "2026-09-05",
+            "buyer_business_name": "Beta LLC",
+            "invoice_items": [
+                {
+                    "product_description": "Copper Wire",
+                    "quantity": 2,
+                    "value_sales_excluding_st": 300,
+                    "sales_tax_applicable": 54,
+                    "total_value": 354,
+                    "sale_type": "Standard",
+                }
+            ],
+        },
+    ]
+
+    respx.get(f"{base_url}/api/invoices?companyId={company_id}").respond(
+        status_code=200,
+        json=mock_invoices,
+    )
+
+    from mcp_digitalinvoice.services.report_service import ReportService
+    from mcp_digitalinvoice.models.schemas import ReportsInput
+
+    report_svc = ReportService(db=db_session, redis=fake_redis)
+
+    # 1. Test group_by="none"
+    inp_none = ReportsInput(groupBy="none")
+    res_none = await report_svc.get_reports(tenant_id, inp_none)
+    assert res_none.status == "ok"
+    assert res_none.summary.total_groups == 1
+    assert res_none.summary.total_items == 3
+    assert res_none.summary.total_quantity == 17.0
+    assert res_none.summary.total_amount == 1800.0
+    assert res_none.summary.total_gst == 324.0
+    assert res_none.summary.net_amount == 2124.0
+
+    # 2. Test group_by="customer" with date filter
+    inp_filtered = ReportsInput(dateFrom="2026-09-02", groupBy="customer")
+    res_filtered = await report_svc.get_reports(tenant_id, inp_filtered)
+    assert res_filtered.status == "ok"
+    assert res_filtered.summary.total_groups == 1
+    assert res_filtered.summary.total_items == 1
+    assert res_filtered.summary.total_quantity == 2.0
+    assert res_filtered.groups[0].group_key == "Beta LLC"
+
+    # 3. Test invalid group_by
+    inp_invalid = ReportsInput(groupBy="invalid_field")
+    res_invalid = await report_svc.get_reports(tenant_id, inp_invalid)
+    assert res_invalid.status == "failed"
+    assert "Invalid groupBy" in res_invalid.error
+
+

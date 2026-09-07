@@ -294,6 +294,48 @@ class DigitalInvoicingAdapter:
 
         return float(first_val)
 
+    async def fetch_invoices(
+        self,
+        cookie: str,
+        company_id: str,
+        environment: Optional[str] = None,
+    ) -> list:
+        """GET /api/invoices — retrieves the tenant's full invoice list with nested
+        invoice_items. `environment` is intentionally optional and NEVER hardcoded to
+        "sandbox": the site's own UI appends environment=sandbox or environment=production
+        based on the account's current mode, and production tenants must not be forced
+        into sandbox. Only append it to the query string if the caller explicitly passes it.
+        """
+        path = f"/api/invoices?companyId={company_id}"
+        if environment:
+            path += f"&environment={environment}"
+
+        headers = {"Cookie": f"fbr_session={cookie}" if not cookie.startswith("fbr_session=") else cookie}
+
+        try:
+            response = await self._request("GET", path, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise UpstreamServerError("Timeout fetching invoices from Digital Invoicing Software.") from exc
+        except httpx.RequestError as exc:
+            raise AdapterError("Network failure while fetching invoices.") from exc
+
+        if response.status_code in (401, 403):
+            raise AuthenticationError("Session expired or unauthorized for Digital Invoicing Software.")
+        elif response.status_code >= 500:
+            raise UpstreamServerError(f"Digital Invoicing Software returned {response.status_code} while fetching invoices.")
+        elif response.status_code != 200:
+            raise AdapterError(f"Unexpected status code {response.status_code} while fetching invoices.")
+
+        try:
+            data = response.json()
+        except Exception as exc:
+            raise UpstreamContractError("Invoices response body is not valid JSON.") from exc
+
+        if not isinstance(data, list):
+            raise UpstreamContractError("Invoices response was not a JSON list as expected.")
+
+        return data
+
     async def validate_invoice(self, cookie: str, invoice_id: str) -> Dict[str, Any]:
         """Stub for validate_invoice - out of scope for current build."""
         raise NotImplementedError("Validate Invoice is out of scope due to upstream 500 error.")

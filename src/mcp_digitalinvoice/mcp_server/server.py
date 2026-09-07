@@ -14,8 +14,10 @@ from mcp_digitalinvoice.models.schemas import (
     BuyerInfo,
     InvoiceItem,
     InvoiceMeta,
+    ReportsInput,
 )
 from mcp_digitalinvoice.services.invoice_service import InvoiceService
+from mcp_digitalinvoice.services.report_service import ReportService
 from mcp_digitalinvoice.logging import configure_logging, logger
 from mcp_digitalinvoice.mcp_server.middleware import (
     mcp_api_key_ctx,
@@ -81,6 +83,34 @@ async def fill_invoice(
         except Exception as exc:
             logger.error("Error in fill_invoice MCP tool", error=str(exc))
             return {"status": "failed", "error": str(exc), "summary": "MCP tool execution failed."}
+        finally:
+            if redis:
+                await redis.aclose()
+
+
+@mcp.tool()
+async def get_reports(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    group_by: Optional[str] = "none",
+) -> Dict[str, Any]:
+    """Get a grouped sales/tax report summary, mirroring the site's own Reports page.
+
+    date_from / date_to: 'YYYY-MM-DD', inclusive, both optional (omit for all-time).
+    group_by: one of 'none', 'date', 'voucher_no', 'invoice_number', 'customer',
+    'sale_type', 'item_name'. Defaults to 'none' (matches the site's default view).
+    """
+    async with AsyncSessionLocal() as db:
+        redis = get_redis_client()
+        try:
+            tenant_id = await _resolve_tenant_id(db)
+            service = ReportService(db=db, redis=redis)
+            input_data = ReportsInput(dateFrom=date_from, dateTo=date_to, groupBy=group_by)
+            res = await service.get_reports(tenant_id, input_data)
+            return res.model_dump()
+        except Exception as exc:
+            logger.error("Error in get_reports MCP tool", error=str(exc))
+            return {"status": "failed", "error": str(exc)}
         finally:
             if redis:
                 await redis.aclose()
